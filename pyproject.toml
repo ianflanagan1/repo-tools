@@ -1,0 +1,37 @@
+[project]
+name = "repo-tools"
+version = "0.1.0"
+description = "Command line tools for repositories: publishing them on GitHub and Packagist, and reporting and fixing the state of every one under a folder."
+requires-python = ">=3.13"
+dependencies = ["cli-kit"]
+
+[project.scripts]
+github = "repo_tools.github.__main__:main"
+packagist = "repo_tools.packagist.__main__:main"
+repo-list = "repo_list:main"
+repo-fix = "repo_list.fix:main"
+
+# Until cli-kit is on GitHub, built from its folder next to this one. Not editable, so a change
+# there reaches these tools only when `uv sync` rebuilds it.
+[tool.uv.sources]
+cli-kit = { path = "../cli-kit" }
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[build-system]
+requires = ["uv_build>=0.9,<0.13"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = ["repo_tools", "repo_list"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["--import-mode=importlib"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

@@ -1,0 +1,11 @@
+# Your settings for repo-tools. Copy this file to config.toml, which git ignores, and
+# edit it. A setting left out takes the default shown here.
+
+# Where repo-list and repo-fix look when given no folder.
+root = "~/projects"
+
+[packagist]
+# Your Packagist vendor name. With --packagist, repo-list checks, and repo-fix publishes and
+# updates, each repository whose composer.json names a package of this vendor's. Leave it out
+# if you don't publish to Packagist.
+vendor = "your-vendor"
