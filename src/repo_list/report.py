@@ -56,6 +56,12 @@ def count(n: int, noun: str) -> str:
     return f"{n} {noun}" if n == 1 else f"{n} {noun}s"
 
 
+def name(path: Path, colour: Style) -> str:
+    """A path from the root, its parent grey and its last part bold."""
+    parent = "" if path.parent == Path(".") else f"{path.parent}/"
+    return colour(GREY, parent) + colour(BOLD, path.name)
+
+
 def show(root: Path, folders: list[Folder]) -> int:
     """Prints each folder by its path from root, then the total needing attention.
 
@@ -65,14 +71,12 @@ def show(root: Path, folders: list[Folder]) -> int:
     width = max(len(str(f.path.relative_to(root))) for f in folders)
     for folder in folders:
         path = folder.path.relative_to(root)
-        parent = "" if path.parent == Path(".") else f"{path.parent}/"
-        name = colour(GREY, parent) + colour(BOLD, path.name)
         if folder.problems:
             padding = " " * (width - len(str(path)))
             problems = "  ".join(describe(p) for p in folder.problems)
-            print(f"{colour(RED, '✘')} {name}{padding}  {colour(YELLOW, problems)}")
+            print(f"{colour(RED, '✘')} {name(path, colour)}{padding}  {colour(YELLOW, problems)}")
         else:
-            print(f"{colour(GREEN, '✔')} {name}")
+            print(f"{colour(GREEN, '✔')} {name(path, colour)}")
 
     attention = sum(1 for f in folders if f.problems)
     print()
