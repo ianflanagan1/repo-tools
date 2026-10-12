@@ -27,6 +27,7 @@ import sys
 from pathlib import Path
 
 from cli_kit import cli
+from cli_kit.colour import GREEN, GREY, RED, YELLOW, Style, wants_colour
 
 from repo_list import config, report, scan
 from repo_list.scan import (
@@ -92,9 +93,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     scan.survey(folders, fetch_first=True, packagist_vendor=vendor)
+    colour = Style(enabled=wants_colour())
     fixed_any = False
     for folder in folders:
-        log = Log(str(folder.path.relative_to(root)))
+        log = Log(folder.path.relative_to(root), colour)
         fix(folder, log, init=args.init, wait_for_ci=not args.no_ci_wait, packagist_vendor=vendor)
         fixed_any = fixed_any or log.started
     if fixed_any:
@@ -104,19 +106,27 @@ def main(argv: list[str] | None = None) -> int:
 
 
 class Log:
-    """Prints what was done to one folder, under its name, which is printed only if needed."""
+    """Prints what was done to one folder, under its path, which is printed only if needed.
 
-    def __init__(self, name: str) -> None:
-        self.name = name
+    On a terminal it is coloured as repo-list colours its report: what failed in yellow, and the
+    details quoted under it in grey.
+    """
+
+    def __init__(self, path: Path, colour: Style) -> None:
+        self.path = path
+        self.colour = colour
         self.started = False
 
     def __call__(self, ok: bool, line: str, *details: str) -> None:
+        colour = self.colour
         if not self.started:
-            print(self.name)
+            print(report.name(self.path, colour))
             self.started = True
-        print(f"  {'✔' if ok else '✘'} {line}{':' if details else ''}")
+        line += ":" if details else ""
+        mark = colour(GREEN, "✔") if ok else colour(RED, "✘")
+        print(f"  {mark} {line if ok else colour(YELLOW, line)}")
         for detail in details:
-            print(f"    {detail}")
+            print(f"    {colour(GREY, detail)}")
 
 
 def fix(

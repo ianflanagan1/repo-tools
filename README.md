@@ -159,6 +159,8 @@ work/website
 ✘ 1 of 3 need attention
 ```
 
+On a terminal what was done is coloured as repo-list colours its report, with what failed in yellow and the details under it, such as what Claude said, in grey.
+
 Packagist is checked again after pushing, since whatever was pushed is new to it. The Packagist step is skipped when committing or publishing to GitHub failed, and `packagist update` when `packagist publish` failed.
 
 It needs `claude` on the PATH, logged in, and the commit skill at `~/.claude/skills/commit`. The skill's files may be symlinks into another repository; repo-fix lets Claude read wherever they lead.

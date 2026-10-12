@@ -520,3 +520,40 @@ def test_with_no_path_it_fixes_every_repository_in_projects_wherever_it_is_run_f
         "  ✔ Pushed main to origin",
     ]
     assert result.listing == ["✔ b", "✔ group/a"]
+
+
+# --- Colour
+
+
+def test_on_a_terminal_the_path_marks_failures_and_details_are_coloured_as_repo_list_does(
+    projects, fakes, repo_fix, monkeypatch
+):
+    monkeypatch.setenv("FORCE_COLOR", "1")
+    (projects.root / "group").mkdir()
+    a = projects.pushed_repo("group/a")
+    (a / "f").write_text("change\n")
+    (a / "g").write_text("new\n")
+    fakes.claude(LEAVES_A_FILE)
+    result = repo_fix()
+    head = git(a, "rev-parse", "--short", "HEAD")
+    assert result.progress == [
+        "\x1b[38;5;246mgroup/\x1b[0m\x1b[1ma\x1b[0m",
+        f"  \x1b[32m✔\x1b[0m Committed {head} Fake commit",
+        "  \x1b[31m✘\x1b[0m \x1b[33mCommit left work uncommitted:\x1b[0m",
+        "    \x1b[38;5;246mKept g out.\x1b[0m",
+    ]
+
+
+def test_no_color_turns_colour_off_even_when_forced(projects, fakes, repo_fix, monkeypatch):
+    monkeypatch.setenv("FORCE_COLOR", "1")
+    monkeypatch.setenv("NO_COLOR", "1")
+    a = projects.pushed_repo("a")
+    (a / "f").write_text("change\n")
+    (a / "g").write_text("new\n")
+    fakes.claude(LEAVES_A_FILE)
+    assert repo_fix().progress == [
+        "a",
+        f"  ✔ Committed {git(a, 'rev-parse', '--short', 'HEAD')} Fake commit",
+        "  ✘ Commit left work uncommitted:",
+        "    Kept g out.",
+    ]
