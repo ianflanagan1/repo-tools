@@ -46,6 +46,24 @@ def test_an_unknown_setting_is_an_error_naming_it(file):
         config.load(file)
 
 
-def test_the_example_config_is_valid_and_names_a_placeholder_vendor():
+def test_the_bitbucket_workspace_is_read_from_the_file(file):
+    file.write_text('[bitbucket]\nworkspace = "team"\n')
+    assert config.load(file).bitbucket_workspace == "team"
+
+
+def test_without_a_bitbucket_workspace_none_is_set(file):
+    file.write_text('root = "~/code"\n')
+    assert config.load(file).bitbucket_workspace is None
+
+
+def test_an_unknown_bitbucket_setting_is_an_error_naming_it(file):
+    file.write_text('[bitbucket]\nworkspce = "team"\n')
+    with pytest.raises(config.ConfigError, match="unknown setting bitbucket.workspce"):
+        config.load(file)
+
+
+def test_the_example_config_is_valid_and_names_placeholders():
     example = Path(sys.prefix).parent / "config.example.toml"
-    assert config.load(example) == Config(root="~/projects", packagist_vendor="your-vendor")
+    assert config.load(example) == Config(
+        root="~/projects", packagist_vendor="your-vendor", bitbucket_workspace="your-workspace"
+    )

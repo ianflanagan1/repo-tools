@@ -7,6 +7,7 @@ dependencies = ["cli-kit"]
 
 [project.scripts]
 github = "repo_tools.github.__main__:main"
+bitbucket = "repo_tools.bitbucket.__main__:main"
 packagist = "repo_tools.packagist.__main__:main"
 repo-list = "repo_list:main"
 repo-fix = "repo_list.fix:main"

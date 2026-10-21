@@ -4,9 +4,11 @@ import sys
 
 from cli_kit import cli
 
+from repo_tools import forge_commands
 from repo_tools.github.commands import archive, delete, publish, release, rename
+from repo_tools.github.forge import GitHub
 
-COMMANDS = [publish, release, rename, archive, delete]
+COMMANDS = [publish, release, rename, archive, delete, *forge_commands.commands(GitHub)]
 
 
 def main(argv: list[str] | None = None) -> int:

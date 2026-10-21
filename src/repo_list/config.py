@@ -21,6 +21,8 @@ class Config:
     """Where repo-list and repo-fix look when given no folder."""
     packagist_vendor: str | None = None
     """The vendor whose packages should be on Packagist; None checks no packages."""
+    bitbucket_workspace: str | None = None
+    """The Bitbucket workspace a repo given by bare name is in; None means one must be named."""
 
 
 class ConfigError(Exception):
@@ -40,9 +42,13 @@ def load(path: Path | None = None) -> Config:
     packagist = settings.pop("packagist", {})
     if not isinstance(packagist, dict):
         raise ConfigError(f"{path}: packagist must be a table")
+    bitbucket = settings.pop("bitbucket", {})
+    if not isinstance(bitbucket, dict):
+        raise ConfigError(f"{path}: bitbucket must be a table")
     unknown = [
         *settings.keys() - {"root"},
         *(f"packagist.{k}" for k in packagist.keys() - {"vendor"}),
+        *(f"bitbucket.{k}" for k in bitbucket.keys() - {"workspace"}),
     ]
     if unknown:
         raise ConfigError(f"{path}: unknown setting {', '.join(sorted(unknown))}")
@@ -53,7 +59,10 @@ def load(path: Path | None = None) -> Config:
         raise ConfigError(f"{path}: root must be a string")
     if vendor is not None and not isinstance(vendor, str):
         raise ConfigError(f"{path}: packagist.vendor must be a string")
-    return Config(root, vendor)
+    workspace = bitbucket.get("workspace", Config.bitbucket_workspace)
+    if workspace is not None and not isinstance(workspace, str):
+        raise ConfigError(f"{path}: bitbucket.workspace must be a string")
+    return Config(root, vendor, workspace)
 
 
 def for_command(parser: argparse.ArgumentParser, packagist: bool) -> Config:

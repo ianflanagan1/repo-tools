@@ -5,11 +5,12 @@ Command line tools for repositories, in steps that are safe to re-run:
 | Command | What for |
 |---|---|
 | [`github`](#github-and-packagist) | Publishing, releasing, renaming, archiving and deleting repos on GitHub |
+| [`bitbucket`](#bitbucket) | Publishing, releasing, renaming and deleting repos on Bitbucket Cloud |
 | [`packagist`](#github-and-packagist) | Publishing packages on Packagist and keeping them current |
 | [`repo-list`](#repo-list) | Reporting the state of every git repository under a folder |
 | [`repo-fix`](#repo-fix) | Fixing what repo-list reports |
 
-They're built on [cli-kit](../cli-kit), so every command has the same help and ends with one status line, ✅ ➖ ⚠️ ❌ or 🛑.
+`github` and `bitbucket` also read a repo's [delivery data](#delivery-data): its deployments, merged pull requests and the commits between two revisions, the raw material for DORA metrics. They're built on [cli-kit](../cli-kit), so every command has the same help and ends with one status line, ✅ ➖ ⚠️ ❌ or 🛑.
 
 ## `github` and `packagist`
 
@@ -68,6 +69,48 @@ It compares against `git ls-remote origin`, so work not yet pushed isn't expecte
 There's no `packagist rename`: Packagist's API can't rename, abandon or delete a package, and Packagist has no rename at all. To rename one, change the name in `composer.json` and push, run `packagist publish` for the new name, then on the old package's page choose **Abandon** and name the new package as its replacement. The old page may also offer **Delete**, though Packagist can refuse it for a package others install. To rename only the GitHub repo, use `github rename`.
 
 Every command ends with one status line, ✅ ➖ ⚠️ ❌ or 🛑, as [cli-kit's README](../cli-kit/README.md#how-every-command-behaves) describes.
+
+## `bitbucket`
+
+The same as `github`, for Bitbucket Cloud, through its REST API with your own API token (see [Bitbucket](#bitbucket-1)). A repo is `workspace/name`, or a bare name in the workspace set as `bitbucket.workspace` in the [config](#config). Git goes over SSH with your own key.
+
+### `bitbucket publish [<dir>] [<repo-name>] [--private] [--project <key>] [--no-ci-wait]`
+
+As `github publish`, creating the repo in the configured workspace, with the slug in lower case, in the workspace's default project unless `--project` names one. When the directory has a `bitbucket-pipelines.yml` it turns Pipelines on before pushing, since Pipelines runs only on pushes made while it's on, then waits for the pipeline on the pushed commit and prints the failed step's log on failure.
+
+### `bitbucket release <dir> <patch|minor|major>`
+
+As `github release`, but Bitbucket has no releases of its own: the pushed version tag is the release.
+
+### `bitbucket rename <dir> <new-name>`
+
+As `github rename`: renames the repo, which gives it the new name's slug, points `origin` at it, and points the package on Packagist at the new URL when Packagist has it from this repo. Unlike GitHub, Bitbucket doesn't redirect the old slug, for git or its API, so every other clone needs its `origin` pointed at the new one: `git remote set-url origin git@bitbucket.org:<workspace>/<new-name>.git`.
+
+### `bitbucket delete <repo>`
+
+As `github delete`: after you type `workspace/name` at the terminal, it deletes the repo with a separate token holding only the `delete:repository:bitbucket` scope, read from the credential store only after you've confirmed.
+
+There's no `bitbucket archive`: Bitbucket Cloud can't archive a repo.
+
+## Delivery data
+
+`github` and `bitbucket` have the same four commands for reading what a repo delivered, written once against the interface in `repo_tools/forge.py`, so their output is alike whichever host it is:
+
+| Command | Prints |
+|---|---|
+| `environments <repo>` | the repo's deployment environments |
+| `deployments <repo> <environment> [--since <date>]` | the deployments there, newest first, each with its commit, status (`succeeded`, `failed`, `stopped`, `in_progress`), and when it started and finished |
+| `merged <repo> [--base <branch>] [--since <date>]` | the pull requests merged since then, newest first, each with when it opened and merged and its merge commit |
+| `commits <repo> <base> <head>` | the commits in `head` and not in `base`, as `git log base..head`, newest first, each with when it was written |
+
+Each prints one JSON object per line, then its status line, so `grep '^{'` keeps only the data. `--since` is a date or time, in UTC unless it gives its offset, and 30 days ago unless given. The environment is matched ignoring case. Nothing is stored: each run asks the host.
+
+They're the raw material for the DORA metrics. What a project needs for those, in Bitbucket and Jira, in its repository, in its team's habits and on the collecting machine, and which of those changes repo-tools can make with whose consent, is in dora-tools' [docs/requirements.md](../dora-tools/docs/requirements.md), and `dora check` checks a project against it.
+
+The hosts differ underneath:
+
+- **GitHub** deployments are its deployments API, which Actions fills for each job that names an `environment:`. A deployment's status is its latest; GitHub marks a successful one inactive once a newer one succeeds, so inactive counts as succeeded. A workflow with several jobs in one environment makes a deployment for each.
+- **Bitbucket** deployments are those Pipelines records for each step with a `deployment:` environment. Bitbucket stops listing a deployment once its pipeline's artifacts expire, so older history can't be read back. It doesn't say when a pull request merged, so that's its merge commit's date, at a request per pull request.
 
 ## `repo-list`
 
@@ -188,6 +231,7 @@ Setup also copies `config.example.toml` to `config.toml`, if you have none, for 
 |---|---|---|
 | `root` | `~/projects` | where repo-list and repo-fix look when given no folder |
 | `packagist.vendor` | none | whose packages `-p` checks; `-p` without it is a usage error |
+| `bitbucket.workspace` | none | the workspace `bitbucket publish` creates repos in, and a bare repo name is in |
 
 ### GitHub
 
@@ -226,10 +270,23 @@ Only if you'll use `github delete`. Create a second classic token with only the 
 
 On macOS that command trusts no app with the token (`-T ''`), so each time `github delete` reads it, macOS asks for your login password. Choose **Allow**, never **Always Allow**, which would remove that check. The Secret Service keyring on Linux doesn't ask on each read, so there the typed confirmation is the only check.
 
+### Bitbucket
 
+Only if you'll use `bitbucket`. It needs two things from your Atlassian account:
 
+1. **Your SSH key** on Bitbucket, at *Personal settings → SSH keys*, so `git push` reaches `git@bitbucket.org`. `ssh -T git@bitbucket.org` says whether it does.
+2. **An API token with scopes**, at <https://id.atlassian.com/manage-profile/security/api-tokens>: choose *Create API token with scopes*, then Bitbucket, then only these:
 
+   | Scope | Needed for |
+   |---|---|
+   | `read:repository:bitbucket` | reading repos and commits |
+   | `admin:repository:bitbucket` | creating and renaming repos, and turning Pipelines on |
+   | `read:pullrequest:bitbucket` | `merged` |
+   | `read:pipeline:bitbucket` | waiting for pipelines, `environments` and `deployments` |
 
+   Store it under the email you sign in to Atlassian with. The first command that needs it stops and prints the command that stores it on your system. App passwords no longer work, and Jira's unscoped token isn't accepted.
+
+For `bitbucket delete`, create a second token with only `delete:repository:bitbucket`; `bitbucket delete` likewise says how to store it, on macOS so the keychain asks for your password on each read.
 
 ### Store the Packagist API tokens
 
@@ -258,12 +315,19 @@ When an agent such as Claude Code may run these commands, each check stops a dif
 ```
 src/
 ├── repo_tools/
+│   ├── forge.py          the interface every code host's delivery data is read through
+│   ├── forge_commands.py the delivery commands, written once against it
 │   ├── clone.py          a local clone's origin, and pushing from it, on any host
 │   ├── versions.py       version tags, and the next one at each level
 │   ├── manifest.py       a project's description and Composer package name
 │   ├── github/
 │   │   ├── api.py        GitHub operations, also called by packagist
+│   │   ├── forge.py      GitHub's Forge
 │   │   └── commands/     publish.py, release.py, rename.py, archive.py, delete.py
+│   ├── bitbucket/
+│   │   ├── api.py        Bitbucket Cloud's REST API
+│   │   ├── forge.py      Bitbucket's Forge
+│   │   └── commands/     publish.py, release.py, rename.py, delete.py
 │   └── packagist/
 │       ├── api.py        Packagist operations, also called by repo-list
 │       └── commands/     publish.py, update.py
@@ -277,9 +341,11 @@ src/
     └── fix.py            repo-fix: running the plugins' fixes, stage by stage
 ```
 
-To add a command to `github` or `packagist`, add a module to the service's `commands/` with a `register(subparsers)` function, and list it in that service's `__main__.py`. Put GitHub or Packagist calls another command might need in its `api.py`, and call them from there rather than running the other command.
 Everything repo-list reports, other than a failed fetch or git failing to read a repository, is found by a plugin, and everything repo-fix does is a plugin's fix. To add one, add a module to `plugins/` with a class following `Plugin` in `plugin.py`, whose problems each `describe()` themselves, and list it in `plugins/__init__.py`, in the order its problems should be shown. Its `stage` sets when its fix runs.
 
+To read something new from every code host, add an abstract method to `Forge` in `forge.py`, implement it in each host's `forge.py`, and state it in `tests/repo_tools/test_forge_contract.py`, which runs every test against every host. A host left without it fails as soon as it's made. Adding a host is a subclass of `Forge` and a fake for it in that test.
+
+To add a command to `github`, `bitbucket` or `packagist`, add a module to the service's `commands/` with a `register(subparsers)` function, and list it in that service's `__main__.py`. Put GitHub or Packagist calls another command might need in its `api.py`, and call them from there rather than running the other command. What's the same on every host, such as git and version tags, goes in the modules beside the services, not in one service's.
 
 ## Development
 
