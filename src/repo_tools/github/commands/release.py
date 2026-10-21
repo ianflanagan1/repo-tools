@@ -16,19 +16,17 @@ Origin's tags are fetched first, so one pushed from elsewhere counts. HEAD must 
 already, so the release is of what's on GitHub. An existing tag is never moved.
 """
 
-import argparse
 from pathlib import Path
 
-from cli_kit import outcome
-from cli_kit.errors import Precondition
-from cli_kit.outcome import Done, NothingToDo
+from cli_kit import cli, outcome
+from cli_kit.outcome import Done, NothingToDo, Precondition
 from cli_kit.proc import output, succeeds
 
 from repo_tools import clone, versions
 from repo_tools.github import api
 
 
-def register(subparsers: argparse._SubParsersAction) -> None:
+def register(subparsers: cli.Subparsers) -> None:
     parser = subparsers.add_parser(
         "release",
         help="tag HEAD as the next version, push it, and create the GitHub release",

@@ -8,13 +8,11 @@ The webhook `packagist publish` adds keeps Packagist up to date on each push; th
 it hasn't, such as a package published before its webhook was added.
 """
 
-import argparse
 import time
 from pathlib import Path
 
-from cli_kit import outcome
-from cli_kit.errors import Failure, Precondition
-from cli_kit.outcome import Done, NothingToDo
+from cli_kit import cli, outcome
+from cli_kit.outcome import Done, Failure, NothingToDo, Precondition
 
 from repo_tools import clone
 from repo_tools.packagist import api as packagist
@@ -24,7 +22,7 @@ WAIT_SECONDS = 120
 POLL_SECONDS = 5
 
 
-def register(subparsers: argparse._SubParsersAction) -> None:
+def register(subparsers: cli.Subparsers) -> None:
     parser = subparsers.add_parser(
         "update",
         help="update the package from GitHub, and wait for it",

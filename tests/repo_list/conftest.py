@@ -4,10 +4,12 @@ Every test starts with HOME pointed inside the test's temporary directory, so no
 is read, and an empty `~/projects`, `projects.root`, to be searched. Tests run from outside it.
 Bare remotes go in `projects.remotes`, outside the searched folder. The project's config.toml is
 `projects.config`, naming the Packagist vendor `me`, and Packagist is faked: see `packagist`.
+Plugins can be faked too: see `plugin`.
 """
 
 import json
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -15,6 +17,8 @@ import pytest
 
 import repo_list
 from repo_list import config
+from repo_list.plugin import Log, Plugin, Problem, Stage
+from repo_list.scan import Folder
 from repo_tools.packagist import api as packagist_api
 
 
@@ -140,3 +144,65 @@ def run(capsys: pytest.CaptureFixture[str]):
         return Report(listing.splitlines(), summary, status)
 
     return run
+
+
+@dataclass(frozen=True)
+class Found:
+    what: str
+
+    def describe(self) -> str:
+        return self.what
+
+
+class FakePlugin(Plugin):
+    """Finds whatever is in finds, and records each check and fix in calls.
+
+    Its fix fails if fails is set, and otherwise runs then, which may change what other fakes
+    find.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        calls: list[str],
+        stage: Stage | None = None,
+        finds: tuple[str, ...] = (),
+        checks_folders: bool = False,
+    ) -> None:
+        self.name = name
+        self.calls = calls
+        self.stage = stage
+        self.finds = finds
+        self.checks_folders = checks_folders
+        self.git_fails = False
+        self.fails = False
+        self.then = lambda: None
+
+    def check(self, folder: Folder) -> list[Problem]:
+        self.calls.append(f"check {self.name}")
+        if self.git_fails:
+            raise subprocess.CalledProcessError(128, ["git"])
+        return [Found(what) for what in self.finds]
+
+    def fix(self, folder: Folder, problems: list[Problem], log: Log) -> bool:
+        self.calls.append(f"fix {self.name}: {', '.join(p.describe() for p in problems)}")
+        if self.fails:
+            return False
+        self.then()
+        return True
+
+
+@pytest.fixture
+def calls() -> list[str]:
+    """Each check and fix of the plugins plugin makes, in order."""
+    return []
+
+
+@pytest.fixture
+def plugin(calls: list[str]) -> Callable[..., FakePlugin]:
+    """Makes fake plugins that record their checks and fixes in calls."""
+
+    def plugin(name: str, **settings) -> FakePlugin:
+        return FakePlugin(name, calls, **settings)
+
+    return plugin

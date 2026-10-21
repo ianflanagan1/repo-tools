@@ -1,8 +1,7 @@
 """github archive, with GitHub replaced by fakes."""
 
 import pytest
-from cli_kit.errors import Precondition
-from cli_kit.outcome import Done, NothingToDo
+from cli_kit.outcome import Done, NothingToDo, Precondition
 
 from repo_tools.github import api
 from repo_tools.github.commands.archive import archive

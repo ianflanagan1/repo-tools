@@ -23,7 +23,7 @@ from pathlib import Path
 
 from cli_kit import cli
 
-from repo_list import config, report, scan
+from repo_list import config, plugins, report, scan
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -56,7 +56,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"No repositories under {root}")
         return 0
     vendor = settings.packagist_vendor if args.packagist else None
-    scan.survey(folders, fetch_first=args.fetch, packagist_vendor=vendor)
+    scan.survey(folders, plugins.built_in(vendor), fetch_first=args.fetch)
     return report.show(root, folders)
 
 

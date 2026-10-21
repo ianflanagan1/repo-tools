@@ -5,8 +5,7 @@ from pathlib import Path
 
 import pytest
 from cli_kit import outcome
-from cli_kit.errors import Precondition
-from cli_kit.outcome import Done, NothingToDo
+from cli_kit.outcome import Done, NothingToDo, Precondition
 
 from repo_tools.github import api as github
 from repo_tools.github.commands.rename import rename

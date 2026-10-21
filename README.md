@@ -169,21 +169,14 @@ Exit status: 0 all clean afterwards, 1 something still needs attention, 2 usage 
 
 ## Setup
 
-Once per machine, with [cli-kit](../cli-kit) checked out next to this folder:
+Once per machine:
 
 ```sh
 cd ~/projects/cli/repo-tools
 devbox run setup
 ```
 
-That runs `uv sync`, which builds `.venv` with cli-kit and these tools installed, then prints the commands that link each one onto your PATH:
-
-```sh
-ln -sf ~/projects/cli/repo-tools/.venv/bin/github ~/.local/bin/github
-ln -sf ~/projects/cli/repo-tools/.venv/bin/packagist ~/.local/bin/packagist
-ln -sf ~/projects/cli/repo-tools/.venv/bin/repo-list ~/.local/bin/repo-list
-ln -sf ~/projects/cli/repo-tools/.venv/bin/repo-fix ~/.local/bin/repo-fix
-```
+That runs `uv sync`, which builds `.venv` with cli-kit (from GitHub) and these tools installed, then links each command into `~/.local/bin`, or `$XDG_BIN_HOME`. It says so if that folder isn't on your PATH, or if another command of the same name comes first. Run it again after moving the checkout.
 
 The commands in `.venv/bin` are console scripts pointing at the Python devbox pins, so they start without devbox, which is slower and prints its own error line whenever a command fails. cli-kit puts this folder's devbox packages, such as `gh`, first on the PATH for the programs a command runs. After pulling changes, here or in cli-kit, run `devbox run -- uv sync` to bring `.venv` up to date.
 
@@ -229,23 +222,14 @@ devbox run -- gh auth status
 
 ### Store the delete token
 
-Only if you'll use `github delete`. Create a second classic token with only the `delete_repo` scope, and store it under your GitHub username.
+Only if you'll use `github delete`. Create a second classic token with only the `delete_repo` scope, and store it under your GitHub username. Until it's stored, `github delete` stops and prints the command that stores it on your system.
 
-**macOS**:
+On macOS that command trusts no app with the token (`-T ''`), so each time `github delete` reads it, macOS asks for your login password. Choose **Allow**, never **Always Allow**, which would remove that check. The Secret Service keyring on Linux doesn't ask on each read, so there the typed confirmation is the only check.
 
-```sh
-security add-generic-password -a <github-username> -s github-delete-repo-token -T '' -w
-```
 
-`-T ''` trusts no app with the token, so each time `github delete` reads it, macOS asks for your login password. Choose **Allow**, never **Always Allow**, which would remove that check.
 
-**Linux**, with `secret-tool` from the `libsecret-tools` package:
 
-```sh
-secret-tool store --label='GitHub delete_repo token' service github-delete-repo-token username <github-username>
-```
 
-The Secret Service keyring doesn't ask on each read, so on Linux the typed confirmation is the only check.
 
 ### Store the Packagist API tokens
 
@@ -256,21 +240,7 @@ Only if you'll use `packagist`. Sign in at <https://packagist.org> with GitHub; 
 | Main | submitting a new package, and `github rename` | Only the main token can create packages or change their repository URL. It stays in your credential store. |
 | Safe | the webhook secret, and `packagist update` | The secret is stored on GitHub. The safe token can only trigger package updates, so it does little harm if it leaks. |
 
-Store both under your Packagist **username**, which can differ from your vendor name. Each command prompts for the token, so it never lands in your shell history.
-
-**macOS**:
-
-```sh
-security add-generic-password -a <packagist-username> -s packagist-api-token -w       # main
-security add-generic-password -a <packagist-username> -s packagist-safe-api-token -w  # safe
-```
-
-**Linux**:
-
-```sh
-secret-tool store --label='Packagist main API token' service packagist-api-token username <packagist-username>
-secret-tool store --label='Packagist safe API token' service packagist-safe-api-token username <packagist-username>
-```
+Store both under your Packagist **username**, which can differ from your vendor name. A command that needs one that isn't stored stops and prints the command that stores it on your system, which prompts for the token so it never lands in your shell history.
 
 Tokens are only ever held in memory: never put on a command line or written to a file.
 
@@ -298,13 +268,18 @@ src/
 │       ├── api.py        Packagist operations, also called by repo-list
 │       └── commands/     publish.py, update.py
 └── repo_list/
-    ├── scan.py           finding repositories and what needs attention
+    ├── scan.py           finding repositories, and running the plugins' checks of each
+    ├── plugin.py         what a plugin is, and the stages repo-fix runs fixes in
+    ├── plugins/          init, github, uncommitted, sync, detached, stashes, packagist
+    ├── git.py
     ├── report.py
     ├── config.py
-    └── fix.py            repo-fix
+    └── fix.py            repo-fix: running the plugins' fixes, stage by stage
 ```
 
 To add a command to `github` or `packagist`, add a module to the service's `commands/` with a `register(subparsers)` function, and list it in that service's `__main__.py`. Put GitHub or Packagist calls another command might need in its `api.py`, and call them from there rather than running the other command.
+Everything repo-list reports, other than a failed fetch or git failing to read a repository, is found by a plugin, and everything repo-fix does is a plugin's fix. To add one, add a module to `plugins/` with a class following `Plugin` in `plugin.py`, whose problems each `describe()` themselves, and list it in `plugins/__init__.py`, in the order its problems should be shown. Its `stage` sets when its fix runs.
+
 
 ## Development
 

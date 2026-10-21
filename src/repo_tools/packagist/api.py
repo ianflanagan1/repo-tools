@@ -12,16 +12,26 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
-from cli_kit import credentials
-from cli_kit.errors import Failure
+from cli_kit.credentials import Token
+from cli_kit.outcome import Failure
 from cli_kit.proc import output
 
 PACKAGIST = "https://packagist.org"
 # Composer's metadata, which is what installs see. The packages/<name>.json API is cached for
 # up to twelve hours, too long to tell whether an update has landed.
 REPO = "https://repo.packagist.org"
-MAIN_TOKEN_SERVICE = "packagist-api-token"
-SAFE_TOKEN_SERVICE = "packagist-safe-api-token"
+MAIN_TOKEN = Token(
+    service="packagist-api-token",
+    name="Packagist main API token",
+    username="packagist-username",
+    create="Copy the main API token from your profile at https://packagist.org/profile/.",
+)
+SAFE_TOKEN = Token(
+    service="packagist-safe-api-token",
+    name="Packagist safe API token",
+    username="packagist-username",
+    create="Copy the safe API token from your profile at https://packagist.org/profile/.",
+)
 
 
 def package_url(package: str) -> str:
@@ -40,7 +50,7 @@ def package_exists(package: str) -> bool:
 
 def submit(repository_url: str) -> None:
     """Submits the package in the repository at repository_url, using the main token."""
-    main = credentials.credential(MAIN_TOKEN_SERVICE)
+    main = MAIN_TOKEN.read()
     request = urllib.request.Request(
         f"{PACKAGIST}/api/create-package",
         data=json.dumps({"repository": {"url": repository_url}}).encode(),
@@ -59,7 +69,7 @@ def submit(repository_url: str) -> None:
 
 def github_hook() -> tuple[str, str]:
     """The URL and secret of the GitHub webhook that tells Packagist about pushes."""
-    safe = credentials.credential(SAFE_TOKEN_SERVICE)
+    safe = SAFE_TOKEN.read()
     return f"{PACKAGIST}/api/github?username={safe.username}", safe.token
 
 
@@ -80,7 +90,7 @@ def repository(package: str) -> str | None:
 
 def edit_repository(package: str, repository_url: str) -> None:
     """Points the package at the repository at repository_url, using the main token."""
-    main = credentials.credential(MAIN_TOKEN_SERVICE)
+    main = MAIN_TOKEN.read()
     request = urllib.request.Request(
         f"{PACKAGIST}/api/packages/{package}",
         data=json.dumps({"repository": repository_url}).encode(),
@@ -100,7 +110,7 @@ def edit_repository(package: str, repository_url: str) -> None:
 def update(package: str) -> None:
     """Asks Packagist to update the package from its repository, using the safe token. The
     update runs later, on Packagist's queue."""
-    safe = credentials.credential(SAFE_TOKEN_SERVICE)
+    safe = SAFE_TOKEN.read()
     request = urllib.request.Request(
         f"{PACKAGIST}/api/update-package",
         data=json.dumps({"repository": package_url(package)}).encode(),

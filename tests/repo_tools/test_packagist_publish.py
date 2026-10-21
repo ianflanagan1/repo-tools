@@ -3,7 +3,7 @@
 from pathlib import Path
 
 import pytest
-from cli_kit.errors import Precondition
+from cli_kit.outcome import Precondition
 
 from repo_tools.packagist.commands.publish import package_name, publish
 

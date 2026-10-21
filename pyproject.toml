@@ -11,10 +11,8 @@ packagist = "repo_tools.packagist.__main__:main"
 repo-list = "repo_list:main"
 repo-fix = "repo_list.fix:main"
 
-# Until cli-kit is on GitHub, built from its folder next to this one. Not editable, so a change
-# there reaches these tools only when `uv sync` rebuilds it.
 [tool.uv.sources]
-cli-kit = { path = "../cli-kit" }
+cli-kit = { git = "https://github.com/ianflanagan1/cli-kit", branch = "main" }
 
 [dependency-groups]
 dev = ["pytest>=8", "ruff>=0.6"]

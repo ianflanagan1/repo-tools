@@ -10,14 +10,12 @@ to re-run after a failure.
 The package's origin remote must be a public GitHub repo (run `github publish` first).
 """
 
-import argparse
 import json
 import sys
 from pathlib import Path
 
-from cli_kit import outcome
-from cli_kit.errors import Precondition
-from cli_kit.outcome import Done, NothingToDo
+from cli_kit import cli, outcome
+from cli_kit.outcome import Done, NothingToDo, Precondition
 from cli_kit.proc import output
 
 from repo_tools import clone
@@ -25,7 +23,7 @@ from repo_tools.github import api as github
 from repo_tools.packagist import api as packagist
 
 
-def register(subparsers: argparse._SubParsersAction) -> None:
+def register(subparsers: cli.Subparsers) -> None:
     parser = subparsers.add_parser(
         "publish",
         help="submit the package and add the update webhook",

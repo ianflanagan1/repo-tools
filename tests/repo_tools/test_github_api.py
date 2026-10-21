@@ -1,5 +1,5 @@
 import pytest
-from cli_kit.errors import Precondition
+from cli_kit.outcome import Precondition
 
 from repo_tools.github import api
 

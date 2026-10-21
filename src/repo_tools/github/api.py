@@ -3,7 +3,7 @@
 import json
 import re
 
-from cli_kit.errors import Failure, Precondition
+from cli_kit.outcome import Failure, Precondition
 from cli_kit.proc import output, run, succeeds
 
 

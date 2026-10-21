@@ -7,15 +7,13 @@ It uses gh's own login: archiving needs no scope that publishing doesn't, and yo
 in the repo's settings.
 """
 
-import argparse
-
-from cli_kit.errors import Precondition
-from cli_kit.outcome import Done, NothingToDo
+from cli_kit import cli
+from cli_kit.outcome import Done, NothingToDo, Precondition
 
 from repo_tools.github import api
 
 
-def register(subparsers: argparse._SubParsersAction) -> None:
+def register(subparsers: cli.Subparsers) -> None:
     parser = subparsers.add_parser(
         "archive",
         help="archive a repo, making it read-only",

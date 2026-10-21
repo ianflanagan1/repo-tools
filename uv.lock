@@ -5,15 +5,7 @@ requires-python = ">=3.13"
 [[package]]
 name = "cli-kit"
 version = "0.1.0"
-source = { directory = "../cli-kit" }
-
-[package.metadata]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "pytest", specifier = ">=8" },
-    { name = "ruff", specifier = ">=0.6" },
-]
+source = { git = "https://github.com/ianflanagan1/cli-kit?branch=main#1e2feb298fba2dfe0b3d270ea3b4ac0a672e6196" }
 
 [[package]]
 name = "colorama"
@@ -91,7 +83,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "cli-kit", directory = "../cli-kit" }]
+requires-dist = [{ name = "cli-kit", git = "https://github.com/ianflanagan1/cli-kit?branch=main" }]
 
 [package.metadata.requires-dev]
 dev = [

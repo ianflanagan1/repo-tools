@@ -9,18 +9,23 @@ stored in the system credential store as github-delete-repo-token (see the READM
 read only after you confirm. On macOS, store it so the keychain asks you each time it's read.
 """
 
-import argparse
-
-from cli_kit import credentials, terminal
-from cli_kit.errors import Precondition
-from cli_kit.outcome import Done
+from cli_kit import cli, terminal
+from cli_kit.credentials import Token
+from cli_kit.outcome import Done, Precondition
 
 from repo_tools.github import api
 
-DELETE_TOKEN_SERVICE = "github-delete-repo-token"
+DELETE_TOKEN = Token(
+    service="github-delete-repo-token",
+    name="GitHub delete_repo token",
+    username="github-username",
+    create="Create a classic token with only the delete_repo scope at"
+    " https://github.com/settings/tokens.",
+    confirm_each_read=True,
+)
 
 
-def register(subparsers: argparse._SubParsersAction) -> None:
+def register(subparsers: cli.Subparsers) -> None:
     parser = subparsers.add_parser(
         "delete",
         help="delete a repo, after typed confirmation",
@@ -42,5 +47,5 @@ def delete(name: str) -> Done:
     if typed != repo:
         raise Precondition("Not confirmed, so nothing was deleted.")
 
-    api.delete(repo, credentials.credential(DELETE_TOKEN_SERVICE).token)
+    api.delete(repo, DELETE_TOKEN.read().token)
     return Done("Deleted.", repo)

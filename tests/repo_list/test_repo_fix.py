@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from repo_list import fix
+from repo_list.plugins import github, packagist, uncommitted
 
 COMMITS = """git add -A && git commit -qm "Fake commit" && echo '{"result": "✅ Committed."}'"""
 DOES_NOTHING = """printf '%s' '{"result": "🛑 Stopped.\\nThe check failed."}'"""
@@ -54,13 +55,13 @@ class Fakes:
         self.packagist(PACKAGIST)
 
     def claude(self, action: str) -> None:
-        self.monkeypatch.setattr(fix, "CLAUDE", str(self._script("claude", action)))
+        self.monkeypatch.setattr(uncommitted, "CLAUDE", str(self._script("claude", action)))
 
     def github(self, action: str) -> None:
-        self.monkeypatch.setattr(fix, "GITHUB", str(self._script("github", action)))
+        self.monkeypatch.setattr(github, "GITHUB", str(self._script("github", action)))
 
     def packagist(self, action: str) -> None:
-        self.monkeypatch.setattr(fix, "PACKAGIST", str(self._script("packagist", action)))
+        self.monkeypatch.setattr(packagist, "PACKAGIST", str(self._script("packagist", action)))
 
     def calls(self, name: str) -> list[list[str]]:
         """Each call's directory, then its arguments."""

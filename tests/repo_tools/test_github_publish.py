@@ -4,7 +4,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from cli_kit.errors import Precondition
+from cli_kit.outcome import Precondition
 
 from repo_tools.github.__main__ import main
 from repo_tools.github.commands.publish import publish

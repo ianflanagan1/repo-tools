@@ -13,12 +13,10 @@ takes the old name. Packagist matches the webhook's pushes to a package by its r
 so it is pointed at the new one too. The clone's folder keeps its name.
 """
 
-import argparse
 from pathlib import Path
 
-from cli_kit import outcome
-from cli_kit.errors import Precondition
-from cli_kit.outcome import Done, NothingToDo
+from cli_kit import cli, outcome
+from cli_kit.outcome import Done, NothingToDo, Precondition
 from cli_kit.proc import output
 
 from repo_tools import clone, manifest
@@ -26,7 +24,7 @@ from repo_tools.github import api
 from repo_tools.packagist import api as packagist
 
 
-def register(subparsers: argparse._SubParsersAction) -> None:
+def register(subparsers: cli.Subparsers) -> None:
     parser = subparsers.add_parser(
         "rename",
         help="rename the repo, its origin remote and its Packagist URL",

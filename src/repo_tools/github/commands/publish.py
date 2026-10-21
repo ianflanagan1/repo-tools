@@ -15,14 +15,12 @@ one (see repo_tools.manifest). An existing repo is never edited: if its visibili
 from the one asked for, the command stops.
 """
 
-import argparse
 import subprocess
 import time
 from pathlib import Path
 
-from cli_kit import outcome
-from cli_kit.errors import Failure, Precondition
-from cli_kit.outcome import Done, NothingToDo
+from cli_kit import cli, outcome
+from cli_kit.outcome import Done, Failure, NothingToDo, Precondition
 from cli_kit.proc import output, run, succeeds
 
 from repo_tools import clone, manifest
@@ -33,7 +31,7 @@ CI_START_INTERVAL = 3  # seconds
 FAILED_LOG_LINES = 50
 
 
-def register(subparsers: argparse._SubParsersAction) -> None:
+def register(subparsers: cli.Subparsers) -> None:
     parser = subparsers.add_parser(
         "publish",
         help="create the repo, push, and wait for CI",

@@ -3,7 +3,7 @@
 import os
 
 import pytest
-from cli_kit.errors import Failure
+from cli_kit.outcome import Failure
 
 from repo_tools.packagist import api as packagist_api
 
