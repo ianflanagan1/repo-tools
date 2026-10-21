@@ -11,7 +11,7 @@ is skipped when already done, so it is safe to re-run after a failure.
 
 dir defaults to the current directory, and repo-name to the directory's name. The repo is public
 unless --private is given. Its description comes from the project's package manifest when it has
-one (see repo_tools.github.manifest). An existing repo is never edited: if its visibility differs
+one (see repo_tools.manifest). An existing repo is never edited: if its visibility differs
 from the one asked for, the command stops.
 """
 
@@ -25,7 +25,8 @@ from cli_kit.errors import Failure, Precondition
 from cli_kit.outcome import Done, NothingToDo
 from cli_kit.proc import output, run, succeeds
 
-from repo_tools.github import api, manifest
+from repo_tools import clone, manifest
+from repo_tools.github import api
 
 CI_START_ATTEMPTS = 20
 CI_START_INTERVAL = 3  # seconds
@@ -72,7 +73,7 @@ def publish(
 
     repo = f"{api.current_user()}/{name or directory.name}"
     url = f"https://github.com/{repo}"
-    origin = api.origin_url(directory)
+    origin = clone.origin_url(directory)
     if origin is not None and api.repo_from_url(origin) != repo:
         raise Precondition(f"origin is {origin}, not {repo}.")
 
@@ -91,9 +92,9 @@ def publish(
         outcome.changed(f"Added origin {repo}")
 
     # 3. Push
-    if api.push(*git, "push", "--porcelain", "-u", "origin", branch):
+    if clone.push(*git, "push", "--porcelain", "-u", "origin", branch):
         outcome.changed(f"Pushed {branch}")
-    if api.push(*git, "push", "--porcelain", "origin", "--tags"):
+    if clone.push(*git, "push", "--porcelain", "origin", "--tags"):
         outcome.changed("Pushed tags")
 
     # 4. CI

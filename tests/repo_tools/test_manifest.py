@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from repo_tools.github.manifest import description
+from repo_tools.manifest import composer_name, description
 
 
 def test_reads_the_description_from_composer_json(tmp_path: Path):
@@ -110,3 +110,14 @@ def test_is_empty_for_a_manifest_it_cannot_parse(tmp_path: Path):
     (tmp_path / "Cargo.toml").write_text("[package")
     (tmp_path / "pom.xml").write_text("<project>")
     assert description(tmp_path) == ""
+
+
+def test_reads_the_composer_package_name(tmp_path):
+    (tmp_path / "composer.json").write_text('{"name": "me/thing"}')
+    assert composer_name(tmp_path) == "me/thing"
+
+
+def test_a_project_without_a_composer_package_name_has_none(tmp_path):
+    assert composer_name(tmp_path) is None
+    (tmp_path / "composer.json").write_text('{"description": "no name"}')
+    assert composer_name(tmp_path) is None

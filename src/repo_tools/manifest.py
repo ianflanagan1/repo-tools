@@ -1,4 +1,7 @@
-"""A project's one-line description, read from its package manifest.
+"""What a project's package manifests say: its one-line description, and its Composer package
+name.
+
+The description is read from its package manifest.
 
 Manifests are tried in this order, and the first with a non-empty description wins:
 
@@ -87,3 +90,12 @@ def _from_xml(path: Path, tag: str, *, top_level: bool) -> str:
         if element.tag.rpartition("}")[2] == tag:
             return (element.text or "").strip()
     return ""
+
+
+def composer_name(project: Path) -> str | None:
+    """The package name in the project's composer.json, or None when it has none."""
+    try:
+        name = json.loads((project / "composer.json").read_text()).get("name")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return name if isinstance(name, str) and name else None

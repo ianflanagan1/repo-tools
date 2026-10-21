@@ -2,7 +2,6 @@
 
 import json
 import re
-from pathlib import Path
 
 from cli_kit.errors import Failure, Precondition
 from cli_kit.proc import output, run, succeeds
@@ -84,16 +83,6 @@ def repo_from_url(url: str) -> str:
     return match.group(1)
 
 
-def origin_url(directory: Path) -> str | None:
-    """The URL of the directory's origin remote as configured, or None when it has none.
-
-    Read from the config rather than `git remote get-url`, which applies url.*.insteadOf
-    rewrites and so can hide which GitHub repo the remote names.
-    """
-    git = ("git", "-C", str(directory), "config", "--get", "remote.origin.url")
-    return output(*git) if succeeds(*git) else None
-
-
 def hook_urls(repo: str) -> list[str]:
     """The URLs the repo's webhooks call."""
     return output("gh", "api", f"repos/{repo}/hooks", "--jq", ".[].config.url").splitlines()
@@ -122,12 +111,3 @@ def add_hook(repo: str, url: str, secret: str) -> None:
         raise Failure(
             "Couldn't add the webhook.", "The gh token needs the admin:repo_hook scope."
         ) from None
-
-
-def push(*command: str) -> bool:
-    """Runs a `git push --porcelain` and says whether it updated anything on the remote.
-
-    Each ref line starts with a flag: "=" up to date, " " fast-forward, "*" new, "+" forced.
-    """
-    lines = output(*command).splitlines()
-    return any(line[:1] in (" ", "*", "+") and "\t" in line for line in lines)

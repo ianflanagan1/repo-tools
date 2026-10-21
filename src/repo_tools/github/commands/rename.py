@@ -14,7 +14,6 @@ so it is pointed at the new one too. The clone's folder keeps its name.
 """
 
 import argparse
-import json
 from pathlib import Path
 
 from cli_kit import outcome
@@ -22,6 +21,7 @@ from cli_kit.errors import Precondition
 from cli_kit.outcome import Done, NothingToDo
 from cli_kit.proc import output
 
+from repo_tools import clone, manifest
 from repo_tools.github import api
 from repo_tools.packagist import api as packagist
 
@@ -42,7 +42,7 @@ def rename(directory: Path, new_name: str) -> Done | NothingToDo:
         raise Precondition(f"No such directory: {directory}.")
     if "/" in new_name:
         raise Precondition("Give the new name without the owner; a rename keeps the owner.")
-    origin = api.origin_url(directory)
+    origin = clone.origin_url(directory)
     if origin is None:
         raise Precondition("No origin remote.", "Run `github publish` first.")
     named = api.repo_from_url(origin)
@@ -71,7 +71,7 @@ def rename(directory: Path, new_name: str) -> Done | NothingToDo:
 
     # 3. Packagist
     url = f"https://github.com/{target}"
-    if (package := composer_name(directory)) and (stored := packagist.repository(package)):
+    if (package := manifest.composer_name(directory)) and (stored := packagist.repository(package)):
         if api.repo_from_url(stored) != target:
             packagist.edit_repository(package, url)
             outcome.changed(f"Pointed {package} on Packagist at {url}")
@@ -79,12 +79,3 @@ def rename(directory: Path, new_name: str) -> Done | NothingToDo:
     if not outcome.changes():
         return NothingToDo(f"Already named {target}.")
     return Done("Renamed.", url)
-
-
-def composer_name(directory: Path) -> str | None:
-    """The package name in the directory's composer.json, or None when it has none."""
-    try:
-        name = json.loads((directory / "composer.json").read_text()).get("name")
-    except (OSError, ValueError, AttributeError):
-        return None
-    return name if isinstance(name, str) and name else None

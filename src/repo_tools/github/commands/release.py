@@ -17,7 +17,6 @@ already, so the release is of what's on GitHub. An existing tag is never moved.
 """
 
 import argparse
-import re
 from pathlib import Path
 
 from cli_kit import outcome
@@ -25,10 +24,8 @@ from cli_kit.errors import Precondition
 from cli_kit.outcome import Done, NothingToDo
 from cli_kit.proc import output, succeeds
 
+from repo_tools import clone, versions
 from repo_tools.github import api
-
-LEVELS = ["patch", "minor", "major"]
-VERSION = re.compile(r"^(v?)(\d+)\.(\d+)\.(\d+)$")
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -38,7 +35,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         description=__doc__.split("\n\n", 1)[1],
     )
     parser.add_argument("dir", type=Path)
-    parser.add_argument("level", choices=LEVELS)
+    parser.add_argument("level", choices=versions.LEVELS)
     parser.set_defaults(run=lambda args: release(args.dir, args.level))
 
 
@@ -53,7 +50,7 @@ def release(directory: Path, level: str) -> Done | NothingToDo:
         raise Precondition(f"Uncommitted changes in {directory}.")
     if not output(*git, "branch", "--show-current"):
         raise Precondition(f"HEAD is detached in {directory}.")
-    origin = api.origin_url(directory)
+    origin = clone.origin_url(directory)
     if origin is None:
         raise Precondition("No origin remote.", "Run `github publish` first.")
     repo = api.repo_from_url(origin)
@@ -66,17 +63,17 @@ def release(directory: Path, level: str) -> Done | NothingToDo:
 
     # 1. Tag
     released = [
-        t for t in output(*git, "tag", "--points-at", "HEAD").splitlines() if VERSION.match(t)
+        t for t in output(*git, "tag", "--points-at", "HEAD").splitlines() if versions.is_version(t)
     ]
     if released:
-        tag = max(released, key=_version)
+        tag = max(released, key=versions.key)
     else:
-        tag = next_version(output(*git, "tag").splitlines(), level)
+        tag = versions.next_version(output(*git, "tag").splitlines(), level)
         output(*git, "tag", "-a", "-m", tag, tag)
         outcome.changed(f"Tagged HEAD as {tag}")
 
     # 2. Push
-    if api.push(*git, "push", "--porcelain", "origin", f"refs/tags/{tag}"):
+    if clone.push(*git, "push", "--porcelain", "origin", f"refs/tags/{tag}"):
         outcome.changed(f"Pushed {tag}")
 
     # 3. GitHub release
@@ -87,24 +84,3 @@ def release(directory: Path, level: str) -> Done | NothingToDo:
     if not outcome.changes():
         return NothingToDo(f"HEAD is already released as {tag}.")
     return Done(f"Released {tag}.", f"https://github.com/{repo}/releases/tag/{tag}")
-
-
-def next_version(tags: list[str], level: str) -> str:
-    """The highest version among tags, bumped at level: patch, minor or major."""
-    versions = [t for t in tags if VERSION.match(t)]
-    highest = max(versions, key=_version, default="v0.0.0")
-    prefix = VERSION.match(highest)[1]
-    major, minor, patch = _version(highest)
-    match level:
-        case "major":
-            major, minor, patch = major + 1, 0, 0
-        case "minor":
-            minor, patch = minor + 1, 0
-        case _:
-            patch += 1
-    return f"{prefix}{major}.{minor}.{patch}"
-
-
-def _version(tag: str) -> tuple[int, int, int]:
-    _, major, minor, patch = VERSION.match(tag).groups()
-    return int(major), int(minor), int(patch)

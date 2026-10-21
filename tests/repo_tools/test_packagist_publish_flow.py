@@ -8,6 +8,7 @@ from cli_kit import outcome
 from cli_kit.errors import Precondition
 from cli_kit.outcome import Done, NothingToDo
 
+from repo_tools import clone
 from repo_tools.github import api as github
 from repo_tools.packagist import api as packagist
 from repo_tools.packagist.commands.publish import publish
@@ -27,7 +28,7 @@ def services(monkeypatch: pytest.MonkeyPatch) -> Services:
     def add_hook(repo: str, url: str, secret: str) -> None:
         services.hooks.append(url)
 
-    monkeypatch.setattr(github, "origin_url", lambda directory: "git@github.com:me/thing.git")
+    monkeypatch.setattr(clone, "origin_url", lambda directory: "git@github.com:me/thing.git")
     monkeypatch.setattr(github, "visibility", lambda repo: services.visibility)
     monkeypatch.setattr(github, "hook_urls", lambda repo: services.hooks)
     monkeypatch.setattr(github, "add_hook", add_hook)

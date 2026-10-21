@@ -8,7 +8,7 @@ from cli_kit import outcome
 from cli_kit.errors import Failure, Precondition
 from cli_kit.outcome import Done, NothingToDo
 
-from repo_tools.github import api as github
+from repo_tools import clone
 from repo_tools.packagist import api as packagist
 from repo_tools.packagist.commands import update as update_module
 from repo_tools.packagist.commands.update import update
@@ -27,7 +27,7 @@ class Packagist:
 @pytest.fixture
 def services(monkeypatch: pytest.MonkeyPatch) -> Packagist:
     services = Packagist()
-    monkeypatch.setattr(github, "origin_url", lambda directory: "git@github.com:me/thing.git")
+    monkeypatch.setattr(clone, "origin_url", lambda directory: "git@github.com:me/thing.git")
     monkeypatch.setattr(packagist, "lacks", services.lacks)
     monkeypatch.setattr(packagist, "update", services.updates.append)
     monkeypatch.setattr(update_module, "WAIT_SECONDS", 0.2)
@@ -83,7 +83,7 @@ def test_a_package_not_on_packagist_is_refused(services, package):
 
 
 def test_a_package_without_an_origin_is_refused(services, package, monkeypatch):
-    monkeypatch.setattr(github, "origin_url", lambda directory: None)
+    monkeypatch.setattr(clone, "origin_url", lambda directory: None)
     with pytest.raises(Precondition, match="No origin remote"):
         update(package)
 

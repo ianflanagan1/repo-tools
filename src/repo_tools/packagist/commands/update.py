@@ -16,7 +16,7 @@ from cli_kit import outcome
 from cli_kit.errors import Failure, Precondition
 from cli_kit.outcome import Done, NothingToDo
 
-from repo_tools.github import api as github
+from repo_tools import clone
 from repo_tools.packagist import api as packagist
 from repo_tools.packagist.commands.publish import package_name
 
@@ -39,7 +39,7 @@ def update(directory: Path) -> Done | NothingToDo:
         raise Precondition(f"No such directory: {directory}.")
     directory = directory.resolve()
     package = package_name(directory)
-    if github.origin_url(directory) is None:
+    if clone.origin_url(directory) is None:
         raise Precondition("No origin remote.", "Run `github publish` first.")
 
     lacking = packagist.lacks(package, directory)

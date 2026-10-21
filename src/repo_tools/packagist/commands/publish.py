@@ -20,6 +20,7 @@ from cli_kit.errors import Precondition
 from cli_kit.outcome import Done, NothingToDo
 from cli_kit.proc import output
 
+from repo_tools import clone
 from repo_tools.github import api as github
 from repo_tools.packagist import api as packagist
 
@@ -40,7 +41,7 @@ def publish(directory: Path) -> Done | NothingToDo:
     directory = directory.resolve()
     package = package_name(directory)
 
-    origin = github.origin_url(directory)
+    origin = clone.origin_url(directory)
     if origin is None:
         raise Precondition("No origin remote.", "Run `github publish` first.")
     repo = github.repo_from_url(origin)

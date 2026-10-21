@@ -288,9 +288,11 @@ When an agent such as Claude Code may run these commands, each check stops a dif
 ```
 src/
 ├── repo_tools/
+│   ├── clone.py          a local clone's origin, and pushing from it, on any host
+│   ├── versions.py       version tags, and the next one at each level
+│   ├── manifest.py       a project's description and Composer package name
 │   ├── github/
 │   │   ├── api.py        GitHub operations, also called by packagist
-│   │   ├── manifest.py
 │   │   └── commands/     publish.py, release.py, rename.py, archive.py, delete.py
 │   └── packagist/
 │       ├── api.py        Packagist operations, also called by repo-list
