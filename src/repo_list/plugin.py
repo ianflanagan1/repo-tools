@@ -8,6 +8,7 @@ is pushed, and pushed before other services are told about it.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Protocol
 
@@ -36,6 +37,20 @@ class Problem(Protocol):
     def describe(self) -> str:
         """The problem as repo-list shows it, marked by its emoji."""
         ...
+
+
+@dataclass(frozen=True)
+class Note:
+    """A finding worth showing beside the folder that needs no attention, such as the branch
+    checked out. A check's finding is one by subclassing this. repo-list shows notes in a column
+    of their own, before the problems."""
+
+    text: str
+    quiet: bool = False
+    """Whether it's dimmed, as the expected case."""
+
+    def describe(self) -> str:
+        return self.text
 
 
 class Log(Protocol):

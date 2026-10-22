@@ -1,6 +1,7 @@
 """The plugins that come with repo-list and repo-fix."""
 
 from repo_list.plugin import Plugin
+from repo_list.plugins.branch import Branch
 from repo_list.plugins.detached import Detached
 from repo_list.plugins.github import GitHub
 from repo_list.plugins.init import Init
@@ -23,6 +24,7 @@ def built_in(
         GitHub(wait_for_ci=wait_for_ci),
         Uncommitted(),
         Sync(),
+        Branch(),
         Detached(),
         Stashes(),
         *([Packagist(packagist_vendor)] if packagist_vendor else []),

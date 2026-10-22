@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from repo_list.git import batch_env
-from repo_list.plugin import Plugin, Problem
+from repo_list.plugin import Note, Plugin, Problem
 
 WORKERS = 8
 FETCH_TIMEOUT_SECONDS = 60
@@ -45,12 +45,18 @@ class Folder:
 
     @property
     def problems(self) -> list[Problem]:
-        """What the plugins found, in their order, then whether fetch or git failed."""
+        """What the plugins found that needs attention, in their order, then whether fetch or
+        git failed."""
         return [
-            *(problem for problems in self.found.values() for problem in problems),
+            *(p for problems in self.found.values() for p in problems if not isinstance(p, Note)),
             *([FetchFailed()] if self.fetch_failed else []),
             *([GitFailed()] if self.git_failed else []),
         ]
+
+    @property
+    def notes(self) -> list[Problem]:
+        """What the plugins found that needs no attention, in their order."""
+        return [p for problems in self.found.values() for p in problems if isinstance(p, Note)]
 
 
 def find(folder: Path) -> list[Folder]:

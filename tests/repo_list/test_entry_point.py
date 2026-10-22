@@ -16,7 +16,7 @@ def launch(command: Path, *args: str | Path) -> subprocess.CompletedProcess[str]
 def test_the_command_runs_repo_list(projects):
     projects.pushed_repo("a")
     result = launch(REPO_LIST, projects.root)
-    assert result.stdout == "✔ a\n\n✔ All 1 clean\n"
+    assert result.stdout == "✔ a  main\n\n✔ All 1 clean\n"
 
 
 def test_the_command_works_through_a_symlink(projects, tmp_path):
@@ -28,4 +28,4 @@ def test_the_command_works_through_a_symlink(projects, tmp_path):
 def test_the_repo_fix_command_runs_repo_fix(projects):
     projects.pushed_repo("a")
     result = launch(REPO_FIX, projects.root)
-    assert result.stdout == "✔ a\n\n✔ All 1 clean\n"
+    assert result.stdout == "✔ a  main\n\n✔ All 1 clean\n"

@@ -160,7 +160,7 @@ def test_the_new_commits_are_pushed(projects, repo_fix):
     (a / "g").write_text("new\n")
     result = repo_fix()
     assert subjects(projects.origin(a)) == ["init", "Fake commit"]
-    assert result.listing == ["✔ a"]
+    assert result.listing == ["✔ a  main"]
     assert result.status == 0
 
 
@@ -188,7 +188,7 @@ def test_a_commit_run_that_commits_nothing_fails_with_what_claude_said(projects,
         "    🛑 Stopped.",
         "    The check failed.",
     ]
-    assert result.listing == ["✘ a  📝 1 uncommitted file"]
+    assert result.listing == ["✘ a  main  📝 1 uncommitted file"]
 
 
 def test_a_commit_run_that_rewrites_earlier_commits_fails_and_pushes_nothing(
@@ -315,7 +315,7 @@ def test_a_repository_whose_fetch_fails_is_neither_pushed_nor_pulled(projects, r
     git(a, "remote", "set-url", "origin", str(projects.remotes / "missing.git"))
     result = repo_fix()
     assert result.progress == []
-    assert result.listing == ["✘ a  📤 1 unpushed on main  📡 fetch failed"]
+    assert result.listing == ["✘ a  main  📤 1 unpushed on main  📡 fetch failed"]
 
 
 # --- Publishing
@@ -331,7 +331,7 @@ def test_a_repository_without_a_remote_is_published_with_github_publish(projects
         "    Created me/thing (public)",
         "    https://github.com/me/thing",
     ]
-    assert result.listing == ["✔ a"]
+    assert result.listing == ["✔ a  main"]
 
 
 def test_the_no_ci_wait_flag_is_passed_to_github_publish(projects, fakes, repo_fix):
@@ -352,7 +352,7 @@ def test_a_failed_publish_is_reported_with_its_output(projects, fakes, repo_fix)
     fakes.github(REFUSES)
     result = repo_fix()
     assert result.progress == ["a", "  ✘ Publish failed:", "    ⚠️ Not today."]
-    assert result.listing == ["✘ a  🔌 no remote"]
+    assert result.listing == ["✘ a  main  🔌 no remote"]
 
 
 def test_other_branches_are_pushed_once_the_repository_is_published(projects, fakes, repo_fix):
@@ -363,7 +363,7 @@ def test_other_branches_are_pushed_once_the_repository_is_published(projects, fa
     git(a, "checkout", "-q", "main")
     result = repo_fix()
     assert result.progress[-1] == "  ✔ Pushed feature to origin, now its upstream"
-    assert result.listing == ["✔ a"]
+    assert result.listing == ["✔ a  main"]
 
 
 # --- Packagist
@@ -383,7 +383,7 @@ def test_a_package_not_on_packagist_is_published_there(projects, fakes, repo_fix
         ["publish", str(a)],
         ["update", str(a)],
     ]
-    assert (result.listing, result.status) == (["✔ a"], 0)
+    assert (result.listing, result.status) == (["✔ a  main"], 0)
 
 
 def test_a_package_packagist_lacks_versions_of_is_updated_there(
@@ -398,14 +398,14 @@ def test_a_package_packagist_lacks_versions_of_is_updated_there(
         "    Asked Packagist to update me/a",
         "    https://packagist.org/packages/me/a",
     ]
-    assert (result.listing, result.status) == (["✔ a"], 0)
+    assert (result.listing, result.status) == (["✔ a  main"], 0)
 
 
 def test_a_package_packagist_is_up_to_date_on_is_left_alone(projects, packagist, fakes, repo_fix):
     projects.package("a")
     packagist.has("me/a")
     result = repo_fix("-p")
-    assert (result.progress, result.listing) == ([], ["✔ a"])
+    assert (result.progress, result.listing) == ([], ["✔ a  main"])
     assert fakes.calls("packagist") == []
 
 
@@ -425,13 +425,13 @@ def test_a_failed_packagist_publish_is_reported_and_no_update_is_tried(projects,
     result = repo_fix("-p")
     assert result.progress == ["a", "  ✘ Packagist publish failed:", "    ⚠️ Not today."]
     assert [call[1:] for call in fakes.calls("packagist")] == [["publish", str(a)]]
-    assert (result.listing, result.status) == (["✘ a  🐘 not on Packagist"], 1)
+    assert (result.listing, result.status) == (["✘ a  main  🐘 not on Packagist"], 1)
 
 
 def test_without_the_packagist_flag_packagist_is_left_alone(projects, fakes, repo_fix):
     projects.package("a")
     result = repo_fix()
-    assert (result.progress, result.listing) == ([], ["✔ a"])
+    assert (result.progress, result.listing) == ([], ["✔ a  main"])
     assert fakes.calls("packagist") == []
 
 
@@ -454,7 +454,7 @@ def test_the_init_flag_makes_a_folder_of_files_a_published_repository(projects, 
     result = repo_fix("--init")
     assert result.progress[:2] == ["notes", "  ✔ Initialised a git repository"]
     assert subjects(fakes.remote) == ["Fake commit"]
-    assert result.listing == ["✔ notes"]
+    assert result.listing == ["✔ notes  main"]
 
 
 # --- What it leaves alone
@@ -468,14 +468,16 @@ def test_stashes_and_commits_on_a_detached_head_are_left_for_you(projects, fakes
     projects.commit(a, "lost")
     result = repo_fix()
     assert result.progress == []
-    assert result.listing == ["✘ a  👻 1 commit on detached HEAD  📦 1 stash"]
+    assert result.listing == [
+        f"✘ a  @{projects.short_head(a)}  👻 1 commit on detached HEAD  📦 1 stash"
+    ]
     assert result.status == 1
 
 
 def test_a_clean_repository_has_nothing_done_to_it(projects, fakes, repo_fix):
     projects.pushed_repo("a")
     result = repo_fix()
-    assert (result.progress, result.listing, result.status) == ([], ["✔ a"], 0)
+    assert (result.progress, result.listing, result.status) == ([], ["✔ a  main"], 0)
     assert fakes.calls("claude") == fakes.calls("github") == []
 
 
@@ -489,7 +491,7 @@ def test_a_path_to_a_repository_fixes_only_that_repository(projects, repo_fix):
     projects.commit(b, "local")
     result = repo_fix(b)
     assert result.progress == ["b", "  ✔ Pushed main to origin"]
-    assert result.listing == ["✔ b"]
+    assert result.listing == ["✔ b  main"]
     assert subjects(projects.origin(a)) == ["init"]
 
 
@@ -501,7 +503,7 @@ def test_a_path_to_a_folder_fixes_every_repository_under_it(projects, repo_fix):
     projects.commit(b, "local")
     result = repo_fix(projects.root / "group")
     assert result.progress == ["a", "  ✔ Pushed main to origin", "b", "  ✔ Pushed main to origin"]
-    assert result.listing == ["✔ a", "✔ b"]
+    assert result.listing == ["✔ a  main", "✔ b  main"]
 
 
 def test_with_no_path_it_fixes_every_repository_in_projects_wherever_it_is_run_from(
@@ -520,7 +522,7 @@ def test_with_no_path_it_fixes_every_repository_in_projects_wherever_it_is_run_f
         "group/a",
         "  ✔ Pushed main to origin",
     ]
-    assert result.listing == ["✔ b", "✔ group/a"]
+    assert result.listing == ["✔ b        main", "✔ group/a  main"]
 
 
 # --- Colour

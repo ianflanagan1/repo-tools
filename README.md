@@ -118,13 +118,14 @@ Reports the state of every git repository under a folder, so nothing is left unc
 
 ```
 $ repo-list
-✘ blog          📝 3 uncommitted files  📤 2 unpushed on main
-✔ dotfiles
-✘ notes         📁 not a git repository
-✔ work/api
-✘ work/website  🔌 no remote
+✘ blog          main      📝 3 uncommitted files  📤 2 unpushed on main
+✔ blog-wt1      @3f2a1c9
+✔ dotfiles      main
+✘ notes                   📁 not a git repository
+✔ work/api      main
+✘ work/website  main      🔌 no remote
 
-✘ 3 of 5 need attention
+✘ 3 of 6 need attention
 ```
 
 Each repository is listed by its path from the root, in name order, with ✔ when it is clean or ✘ and what needs attention:
@@ -140,9 +141,11 @@ Each repository is listed by its path from the root, in name order, with ✔ whe
 - 💥 **git failed**: git couldn't read the repository
 - 🐘 **not on Packagist**, **Packagist lacks *versions or branches***, or **Packagist check failed**: with `--packagist` only, for a package of your vendor's (see [Packagist](#packagist))
 
-The last line totals them, for when the list scrolls off the screen: `✘ 3 of 5 need attention`, or `✔ All 5 clean`.
+Between the path and the problems is what each repository has checked out: its branch, or `@` and the commit for a detached HEAD, such as `@3f2a1c9`. It's shown, never counted as needing attention; commits only a detached HEAD has are reported as 👻. The default branch, origin's `HEAD` or else `init.defaultBranch` (`main` by default), is grey, so any other stands out.
 
-On a terminal the parent path is grey, the repository's name is bold and the problems are yellow. `NO_COLOR=1` turns colour off; `FORCE_COLOR=1` keeps it when piping.
+The last line totals them, for when the list scrolls off the screen: `✘ 3 of 6 need attention`, or `✔ All 6 clean`.
+
+On a terminal the parent path is grey, the repository's name is bold, the default branch is grey and the problems are yellow. `NO_COLOR=1` turns colour off; `FORCE_COLOR=1` keeps it when piping.
 
 ### How it searches
 

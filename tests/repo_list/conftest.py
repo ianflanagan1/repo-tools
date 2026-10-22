@@ -73,6 +73,16 @@ class Projects:
         return repo
 
     @staticmethod
+    def short_head(repo: Path) -> str:
+        """HEAD's abbreviated commit, as repo-list shows a detached HEAD."""
+        return subprocess.run(
+            ["git", "-C", str(repo), "rev-parse", "--short", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+    @staticmethod
     def commit(repo: Path, message: str) -> None:
         """Add a line to the repo's file f and commit it."""
         with open(repo / "f", "a") as f:

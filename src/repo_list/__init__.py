@@ -9,6 +9,8 @@ with ✔ when everything is committed and pushed, or ✘ and what needs attentio
   👻 commits on detached HEAD     📡 fetch failed (with --fetch)
   🐘 Packagist (with --packagist) 💥 git failed
 
+Between the path and the problems is the branch checked out, or @ and the commit for a detached
+HEAD; the default branch is dimmed.
 A folder that holds files but is in no repository is listed as not a git repository. With
 --packagist, each package of your Packagist vendor's is checked: not on Packagist, Packagist
 lacking a version tag or branch commit that is on origin, or the check failed.
