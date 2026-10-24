@@ -1,7 +1,7 @@
 [project]
 name = "repo-tools"
 version = "0.1.0"
-description = "Command line tools for repositories: publishing them on GitHub and Packagist, and reporting and fixing the state of every one under a folder."
+description = "Command line tools for repositories: publishing them on GitHub, Packagist and npm, and reporting and fixing the state of every one under a folder."
 requires-python = ">=3.13"
 dependencies = ["cli-kit"]
 
@@ -9,6 +9,7 @@ dependencies = ["cli-kit"]
 github = "repo_tools.github.__main__:main"
 bitbucket = "repo_tools.bitbucket.__main__:main"
 packagist = "repo_tools.packagist.__main__:main"
+npmjs = "repo_tools.npmjs.__main__:main"
 repo-list = "repo_list:main"
 repo-fix = "repo_list.fix:main"
 

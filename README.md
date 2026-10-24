@@ -8,6 +8,7 @@ Command line tools for repositories, in steps that are safe to re-run:
 | [`bitbucket`](#bitbucket) | Publishing, releasing, renaming and deleting repos on Bitbucket Cloud |
 | [`packagist`](#github-and-packagist) | Publishing packages on Packagist and keeping them current |
 | [`repo-list`](#repo-list) | Reporting the state of every git repository under a folder |
+| [`npmjs`](#npmjs) | Publishing packages on npm, then publishing each version tag from GitHub Actions |
 | [`repo-fix`](#repo-fix) | Fixing what repo-list reports |
 
 `github` and `bitbucket` also read a repo's [delivery data](#delivery-data): its deployments, merged pull requests and the commits between two revisions, the raw material for DORA metrics. They're built on [cli-kit](../cli-kit), so every command has the same help and ends with one status line, ✅ ➖ ⚠️ ❌ or 🛑.
@@ -28,7 +29,7 @@ Command line tools for repositories, in steps that are safe to re-run:
 ### `github release <dir> <patch|minor|major>`
 
 1. Tags `HEAD` as the next version: the highest `[v]MAJOR.MINOR.PATCH` tag, bumped at the level you give. A project with no version tags starts from `0.0.0`, so its first `minor` release is `v0.1.0`. The tag keeps the highest tag's style, with or without the `v`.
-2. Pushes the tag. Packagist's webhook then picks it up; run `packagist update <dir>` to wait until it has.
+2. Pushes the tag. Packagist's webhook then picks it up; run `packagist update <dir>` to wait until it has. For an npm package, its publish workflow publishes it; run `npmjs wait <dir>` to wait until it has.
 3. Creates the GitHub release, with notes GitHub generates from the commits since the last one.
 
 It fetches origin's tags first, so a tag pushed from another machine counts. It refuses uncommitted changes, a detached `HEAD`, and a `HEAD` not yet on origin, so a release is always of what's on GitHub. Pre-release tags such as `v2.0.0-beta1` don't count. A `HEAD` that already has a version tag is released as that version, whatever level you give, so running it again after a failure finishes the same release rather than making another, and no tag is ever moved.
@@ -69,6 +70,27 @@ It compares against `git ls-remote origin`, so work not yet pushed isn't expecte
 There's no `packagist rename`: Packagist's API can't rename, abandon or delete a package, and Packagist has no rename at all. To rename one, change the name in `composer.json` and push, run `packagist publish` for the new name, then on the old package's page choose **Abandon** and name the new package as its replacement. The old page may also offer **Delete**, though Packagist can refuse it for a package others install. To rename only the GitHub repo, use `github rename`.
 
 Every command ends with one status line, ✅ ➖ ⚠️ ❌ or 🛑, as [cli-kit's README](../cli-kit/README.md#how-every-command-behaves) describes.
+
+## `npmjs`
+
+Packagist reads a repo's tags, but npm only has what's uploaded to it. So once a package is on npm, its GitHub Actions workflow `.github/workflows/publish.yml` publishes it on each version tag, with provenance and no token, through npm's trusted publishing. `github release` is then the whole release: it pushes the tag, and the workflow sets `package.json`'s version from it and publishes.
+
+npm runs from the package's own devbox (`devbox run -- npm`), which must have `nodejs` with npm 11.15 or later, logged in there as you. Nothing needs npm on the PATH, and `npmjs` never reads a token.
+
+### `npmjs publish <dir>`
+
+1. When npm doesn't have the package yet, publishes it from your clone as the version tag at `HEAD`, the highest if there are several, with `package.json` given that version for the publish and put back after. npm can't trust a workflow to publish a package that doesn't exist, so the first version goes from your machine. Run `github release <dir> minor` first; the tree must be clean.
+2. Trusts the repo's `publish.yml` to publish the package (`npm trust github … --allow-publish`), unless npm already does.
+
+Before changing anything it checks that `origin` is a public GitHub repo (provenance needs one), that `package.json` isn't private and names that repo as its `repository`, that the workflow and `devbox.json` exist, and that you're logged in to npm. npm asks for a one-time password for each step, in your terminal. If npm already trusts some other publisher for the package, it stops and gives the command that revokes it, rather than replacing it. Each step is skipped when it's already done.
+
+npm is reported to drop a trusted publisher no publish has used within 48 hours (npm's own docs don't say so), so release again soon after the first `npmjs publish`.
+
+### `npmjs wait <dir>`
+
+Waits up to ten minutes until npm has every version tag on `origin`, which is how you know the workflow published what `github release` pushed. It compares against `git ls-remote origin` and the registry's own metadata; tags older than the package's first version on npm, and tags that aren't versions, don't count. On a timeout it gives the workflow's runs page.
+
+There's no command for renaming or deprecating a package: run `npm deprecate` in the package's devbox.
 
 ## `bitbucket`
 
@@ -304,6 +326,10 @@ Store both under your Packagist **username**, which can differ from your vendor 
 
 Tokens are only ever held in memory: never put on a command line or written to a file.
 
+### Log in to npm
+
+Only if you'll use `npmjs`. Turn on two-factor authentication for your npm account, which `npm trust` needs, then in a package's directory run `devbox run -- npm login`. npm keeps the login in `~/.npmrc`, so every package's devbox shares it.
+
 ## Guarding delete
 
 When an agent such as Claude Code may run these commands, each check stops a different thing:
@@ -331,9 +357,12 @@ src/
 │   │   ├── api.py        Bitbucket Cloud's REST API
 │   │   ├── forge.py      Bitbucket's Forge
 │   │   └── commands/     publish.py, release.py, rename.py, delete.py
-│   └── packagist/
-│       ├── api.py        Packagist operations, also called by repo-list
-│       └── commands/     publish.py, update.py
+│   ├── packagist/
+│   │   ├── api.py        Packagist operations, also called by repo-list
+│   │   └── commands/     publish.py, update.py
+│   └── npmjs/
+│       ├── api.py        npm operations, through each package's devbox
+│       └── commands/     publish.py, wait.py
 └── repo_list/
     ├── scan.py           finding repositories, and running the plugins' checks of each
     ├── plugin.py         what a plugin is, and the stages repo-fix runs fixes in
@@ -348,7 +377,7 @@ Everything repo-list reports, other than a failed fetch or git failing to read a
 
 To read something new from every code host, add an abstract method to `Forge` in `forge.py`, implement it in each host's `forge.py`, and state it in `tests/repo_tools/test_forge_contract.py`, which runs every test against every host. A host left without it fails as soon as it's made. Adding a host is a subclass of `Forge` and a fake for it in that test.
 
-To add a command to `github`, `bitbucket` or `packagist`, add a module to the service's `commands/` with a `register(subparsers)` function, and list it in that service's `__main__.py`. Put GitHub or Packagist calls another command might need in its `api.py`, and call them from there rather than running the other command. What's the same on every host, such as git and version tags, goes in the modules beside the services, not in one service's.
+To add a command to `github`, `bitbucket`, `packagist` or `npmjs`, add a module to the service's `commands/` with a `register(subparsers)` function, and list it in that service's `__main__.py`. Put GitHub or Packagist calls another command might need in its `api.py`, and call them from there rather than running the other command. What's the same on every host, such as git and version tags, goes in the modules beside the services, not in one service's.
 
 ## Development
 

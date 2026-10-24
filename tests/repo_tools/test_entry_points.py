@@ -1,4 +1,4 @@
-"""The github, bitbucket and packagist commands that uv installs into .venv/bin."""
+"""The github, bitbucket, packagist and npmjs commands that uv installs into .venv/bin."""
 
 import os
 import subprocess
@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 BIN = Path(sys.prefix) / "bin"
-COMMANDS = ["github", "bitbucket", "packagist"]
+COMMANDS = ["github", "bitbucket", "packagist", "npmjs"]
 
 
 def launch(command: Path, *args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
