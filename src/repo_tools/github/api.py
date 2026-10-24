@@ -113,3 +113,16 @@ def add_hook(repo: str, url: str, secret: str) -> None:
         raise Failure(
             "Couldn't add the webhook.", "The gh token needs the admin:repo_hook scope."
         ) from None
+
+
+def open_pull_requests(repo: str, branch: str) -> int:
+    """How many open pull requests the repo has from branch."""
+    jq = "length"
+    command = ("gh", "pr", "list", "--repo", repo, "--head", branch, "--state", "open")
+    return int(output(*command, "--json", "number", "--jq", jq))
+
+
+def create_draft_pull_request(repo: str, branch: str, base: str, title: str, body: str) -> str:
+    """Opens a draft pull request from branch into base, and returns its URL."""
+    command = ("gh", "pr", "create", "--repo", repo, "--draft", "--base", base, "--head", branch)
+    return output(*command, "--title", title, "--body", body).splitlines()[-1]

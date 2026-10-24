@@ -29,6 +29,34 @@ def test_a_setting_left_out_takes_its_default(file):
     assert config.load(file) == Config(root="~/projects", packagist_vendor="me")
 
 
+def test_the_integration_mode_is_not_a_setting_as_each_repository_sets_its_own(file):
+    file.write_text('integration = "local"\n')
+    with pytest.raises(config.ConfigError, match="unknown setting integration"):
+        config.load(file)
+
+
+def test_the_npm_scope_is_read_from_the_file(file):
+    file.write_text('[npm]\nscope = "@me"\n')
+    assert config.load(file).npm_scope == "@me"
+
+
+def test_without_an_npm_scope_none_is_set(file):
+    file.write_text('root = "~/code"\n')
+    assert config.load(file).npm_scope is None
+
+
+def test_an_npm_scope_without_its_at_sign_is_an_error(file):
+    file.write_text('[npm]\nscope = "me"\n')
+    with pytest.raises(config.ConfigError, match="npm.scope must start with @"):
+        config.load(file)
+
+
+def test_an_unknown_npm_setting_is_an_error_naming_it(file):
+    file.write_text('[npm]\nuser = "me"\n')
+    with pytest.raises(config.ConfigError, match="unknown setting npm.user"):
+        config.load(file)
+
+
 def test_a_file_that_is_not_toml_is_an_error_naming_the_file(file):
     file.write_text("root = \n")
     with pytest.raises(config.ConfigError, match=f"^{file}: "):
@@ -96,5 +124,9 @@ def test_an_unknown_description_setting_is_an_error_naming_it(file):
 def test_the_example_config_is_valid_and_names_placeholders():
     example = Path(sys.prefix).parent / "config.example.toml"
     assert config.load(example) == Config(
-        root="~/projects", packagist_vendor="your-vendor", bitbucket_workspace="your-workspace"
+        root="~/projects",
+        packagist_vendor="your-vendor",
+        bitbucket_workspace="your-workspace",
+        npm_scope="@your-scope",
+        description_provider=Provider.CLAUDE,
     )

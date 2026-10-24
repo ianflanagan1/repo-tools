@@ -2,12 +2,16 @@
 
 Every test starts with HOME pointed inside the test's temporary directory, so no real git config
 is read, and an empty `~/projects`, `projects.root`, to be searched. Tests run from outside it.
-Bare remotes go in `projects.remotes`, outside the searched folder. The project's config.toml is
-`projects.config`, naming the Packagist vendor `me`, and Packagist is faked: see `packagist`.
+Bare remotes go in `projects.remotes`, outside the searched directory. The project's config.toml is
+`projects.config`, naming the Packagist vendor `me` and the npm scope `@me`. Each repository
+made sets its integration mode, local, in a committed .workspace.toml; `projects.integration`
+sets another, or none, for the repositories made after it. Packagist and npm are faked: see
+`packagist` and `npm`.
 Plugins can be faked too: see `plugin`.
 """
 
 import json
+import os
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -18,12 +22,16 @@ import pytest
 import repo_list
 from repo_list import config
 from repo_list.plugin import Log, Plugin, Problem, Stage
-from repo_list.scan import Folder
+from repo_list.scan import Directory
+from repo_tools.npmjs import api as npm_api
 from repo_tools.packagist import api as packagist_api
 
 
 def git(*args: str | Path) -> None:
     subprocess.run(["git", *map(str, args)], check=True, capture_output=True)
+
+
+CONFIG = '[packagist]\nvendor = "me"\n\n[npm]\nscope = "@me"\n'
 
 
 class Projects:
@@ -33,14 +41,47 @@ class Projects:
         self.root = home / "projects"
         self.remotes = tmp_path / "remotes"
         self.config = tmp_path / "config.toml"
-        self.config.write_text('[packagist]\nvendor = "me"\n')
+        self.config.write_text(CONFIG)
+        self.mode: str | None = "local"
         self.root.mkdir()
         self.remotes.mkdir()
+
+    def integration(self, mode: str | None) -> None:
+        """Sets the integration mode of the repositories made after this, or with None leaves
+        it unset."""
+        self.mode = mode
+
+    def worktree(self, repo: Path, name: str, *args: str) -> Path:
+        """A linked worktree of repo under the root, added with args, such as --detach or
+        -b feature."""
+        path = self.root / name
+        git("-C", repo, "worktree", "add", "-q", *args, path)
+        return path
+
+    @staticmethod
+    def claude_session(directory: Path, session: str, state: str) -> None:
+        """Records a Claude Code session in directory as the worktree-hooks plugin does, with this
+        test's own process, which is running, as its pid."""
+        git_dir = Path(
+            subprocess.run(
+                ["git", "-C", str(directory), "rev-parse", "--absolute-git-dir"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+        )
+        sessions = git_dir / "claude-sessions"
+        sessions.mkdir(exist_ok=True)
+        record = {"pid": os.getpid(), "state": state}
+        (sessions / f"{session}.json").write_text(json.dumps(record))
 
     def local_repo(self, name: str) -> Path:
         """A repository under the root with one commit and no remote."""
         repo = self.root / name
         git("init", "-q", repo)
+        if self.mode:
+            workspace = f'[repo-tools]\nintegration = "{self.mode}"\n'
+            (repo / ".workspace.toml").write_text(workspace)
         self.commit(repo, "init")
         return repo
 
@@ -72,6 +113,15 @@ class Projects:
         git("-C", repo, "push", "-q")
         return repo
 
+    def npm_package(self, name: str, manifest: dict) -> Path:
+        """A pushed repository whose package.json is manifest."""
+        repo = self.pushed_repo(name)
+        (repo / "package.json").write_text(json.dumps(manifest))
+        git("-C", repo, "add", "-A")
+        git("-C", repo, "commit", "-qm", "package.json")
+        git("-C", repo, "push", "-q")
+        return repo
+
     @staticmethod
     def short_head(repo: Path) -> str:
         """HEAD's abbreviated commit, as repo-list shows a detached HEAD."""
@@ -99,6 +149,7 @@ def projects(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Projects:
     monkeypatch.setenv("XDG_CONFIG_HOME", str(home / ".config"))
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
     monkeypatch.delenv("FORCE_COLOR", raising=False)
+    monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
     monkeypatch.delenv("NO_COLOR", raising=False)
     git("config", "--global", "user.name", "test")
     git("config", "--global", "user.email", "test@example.com")
@@ -135,6 +186,31 @@ def packagist(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Packagist:
     return packagist
 
 
+class Npm:
+    """A fake of the version tags npm lacks of each package it has, kept in a file so that a fake
+    npmjs command can change it too. A package not in the file isn't on npm."""
+
+    def __init__(self, file: Path) -> None:
+        self.file = file
+        self.file.write_text("{}")
+
+    def lacking(self) -> dict[str, list[str]]:
+        return json.loads(self.file.read_text())
+
+    def has(self, package: str, lacking: list[str]) -> None:
+        self.file.write_text(json.dumps(self.lacking() | {package: lacking}))
+
+    def lacks(self, package: str, directory: Path) -> list[str] | None:
+        return self.lacking().get(package)
+
+
+@pytest.fixture(autouse=True)
+def npm(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Npm:
+    npm = Npm(tmp_path / "npm.json")
+    monkeypatch.setattr(npm_api, "lacks", npm.lacks)
+    return npm
+
+
 @dataclass
 class Report:
     listing: list[str]
@@ -150,7 +226,7 @@ def run(capsys: pytest.CaptureFixture[str]):
 
     def run(*args: str | Path) -> Report:
         status = repo_list.main([str(a) for a in args])
-        listing, _, summary = capsys.readouterr().out.rstrip("\n").partition("\n\n")
+        listing, _, summary = capsys.readouterr().out.rstrip("\n").rpartition("\n\n")
         return Report(listing.splitlines(), summary, status)
 
     return run
@@ -177,24 +253,24 @@ class FakePlugin(Plugin):
         calls: list[str],
         stage: Stage | None = None,
         finds: tuple[str, ...] = (),
-        checks_folders: bool = False,
+        checks_directories: bool = False,
     ) -> None:
         self.name = name
         self.calls = calls
         self.stage = stage
         self.finds = finds
-        self.checks_folders = checks_folders
+        self.checks_directories = checks_directories
         self.git_fails = False
         self.fails = False
         self.then = lambda: None
 
-    def check(self, folder: Folder) -> list[Problem]:
+    def check(self, directory: Directory) -> list[Problem]:
         self.calls.append(f"check {self.name}")
         if self.git_fails:
             raise subprocess.CalledProcessError(128, ["git"])
         return [Found(what) for what in self.finds]
 
-    def fix(self, folder: Folder, problems: list[Problem], log: Log) -> bool:
+    def fix(self, directory: Directory, problems: list[Problem], log: Log) -> bool:
         self.calls.append(f"fix {self.name}: {', '.join(p.describe() for p in problems)}")
         if self.fails:
             return False

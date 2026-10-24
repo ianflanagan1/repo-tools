@@ -9,7 +9,7 @@ that names it. Each step is skipped when already done, so it is safe to re-run a
        Packagist has from this repo. This needs the Packagist main token (see the README).
 
 Bitbucket doesn't redirect the old slug, for git or its API, so other clones must be pointed
-at the new one. The clone's folder keeps its name.
+at the new one. The clone's directory keeps its name.
 """
 
 import re

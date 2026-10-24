@@ -4,19 +4,19 @@ from pathlib import Path
 
 from repo_list import fix, scan
 from repo_list.plugin import Stage
-from repo_list.scan import Folder
+from repo_list.scan import Directory
 
 
-def surveyed(*plugins) -> Folder:
-    folder = Folder(Path("repo"), is_repo=True)
-    scan.check_all(folder, list(plugins))
-    return folder
+def surveyed(*plugins) -> Directory:
+    directory = Directory(Path("repo"), is_repo=True)
+    scan.check_all(directory, list(plugins))
+    return directory
 
 
-def run(folder: Folder, *plugins) -> list[tuple[bool, str]]:
+def run(directory: Directory, *plugins) -> list[tuple[bool, str]]:
     """Runs the fixes, returning what they logged."""
     logged: list[tuple[bool, str]] = []
-    fix.fix(folder, list(plugins), lambda ok, line, *details: logged.append((ok, line)))
+    fix.fix(directory, list(plugins), lambda ok, line, *details: logged.append((ok, line)))
     return logged
 
 
@@ -53,7 +53,7 @@ def test_a_plugin_without_a_stage_only_checks(plugin, calls):
     assert fixes(calls) == []
 
 
-def test_a_failed_fix_stops_the_folder_there(plugin, calls):
+def test_a_failed_fix_stops_the_directory_there(plugin, calls):
     commit = plugin("commit", stage=Stage.COMMIT, finds=("c",))
     push = plugin("push", stage=Stage.SYNC, finds=("p",))
     commit.fails = True
@@ -64,23 +64,23 @@ def test_a_failed_fix_stops_the_folder_there(plugin, calls):
 def test_once_a_fix_has_run_each_later_plugin_checks_again_before_its_fix(plugin, calls):
     commit = plugin("commit", stage=Stage.COMMIT, finds=("work",))
     push = plugin("push", stage=Stage.SYNC)
-    folder = surveyed(commit, push)
+    directory = surveyed(commit, push)
     commit.then = lambda: setattr(push, "finds", ("new commits",))
     calls.clear()
-    run(folder, commit, push)
+    run(directory, commit, push)
     assert calls == ["fix commit: work", "check push", "fix push: new commits"]
 
 
 def test_until_a_fix_has_run_nothing_is_checked_again(plugin, calls):
     commit = plugin("commit", stage=Stage.COMMIT)
     tell = plugin("tell", stage=Stage.AFTER_PUSH, finds=("t",))
-    folder = surveyed(commit, tell)
+    directory = surveyed(commit, tell)
     calls.clear()
-    run(folder, commit, tell)
+    run(directory, commit, tell)
     assert calls == ["fix tell: t"]
 
 
-def test_a_folder_git_could_not_read_is_not_fixed(plugin, calls):
+def test_a_directory_git_could_not_read_is_not_fixed(plugin, calls):
     a = plugin("a", stage=Stage.COMMIT, finds=("x",))
     b = plugin("b", stage=Stage.SYNC)
     b.git_fails = True
@@ -88,12 +88,12 @@ def test_a_folder_git_could_not_read_is_not_fixed(plugin, calls):
     assert fixes(calls) == []
 
 
-def test_git_failing_to_read_the_folder_after_a_fix_stops_the_folder_there(plugin, calls):
+def test_git_failing_to_read_the_directory_after_a_fix_stops_the_directory_there(plugin, calls):
     commit = plugin("commit", stage=Stage.COMMIT, finds=("c",))
     push = plugin("push", stage=Stage.SYNC, finds=("p",))
     tell = plugin("tell", stage=Stage.AFTER_PUSH, finds=("t",))
-    folder = surveyed(commit, push, tell)
+    directory = surveyed(commit, push, tell)
     push.git_fails = True
-    run(folder, commit, push, tell)
+    run(directory, commit, push, tell)
     assert fixes(calls) == ["fix commit: c"]
-    assert [p.describe() for p in folder.problems] == ["💥 git failed"]
+    assert [p.describe() for p in directory.problems] == ["💥 git failed"]

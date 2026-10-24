@@ -1,5 +1,5 @@
-"""🐘 A package of your vendor's that Packagist lacks, or lacks versions or branches of, published
-and updated there with the packagist command.
+"""🐘 A package of your vendor's, other than an app, that Packagist lacks, or lacks versions or
+branches of, published and updated there with the packagist command.
 
 The check reads the network. It's skipped for a repository whose fetch failed, as what's on
 origin to compare Packagist with isn't known.
@@ -15,7 +15,7 @@ from cli_kit.outcome import Failure
 
 from repo_list.git import git
 from repo_list.plugin import Log, Plugin, Problem, Stage
-from repo_list.scan import Folder
+from repo_list.scan import Directory
 from repo_tools.packagist import api as packagist
 
 PACKAGIST = str(Path(sys.prefix) / "bin" / "packagist")
@@ -52,11 +52,11 @@ class Packagist(Plugin):
     def __init__(self, vendor: str) -> None:
         self.vendor = vendor
 
-    def check(self, folder: Folder) -> list[Problem]:
+    def check(self, directory: Directory) -> list[Problem]:
         """What Packagist lacks of the repository, if it is a package of the vendor's with an
         origin."""
-        repo = folder.path
-        if folder.fetch_failed:
+        repo = directory.path
+        if directory.fetch_failed:
             return []
         package = package_name(repo, self.vendor)
         if package is None or "origin" not in git(repo, "remote").split():
@@ -69,33 +69,39 @@ class Packagist(Plugin):
             return [NotOnPackagist()]
         return [PackagistBehind(tuple(lacking))] if lacking else []
 
-    def fix(self, folder: Folder, problems: list[Problem], log: Log) -> bool:
+    def fix(self, directory: Directory, problems: list[Problem], log: Log) -> bool:
         if problems == [PackagistFailed()]:
             return True
         for command, done in (
             ("publish", "Published on Packagist"),
             ("update", "Updated on Packagist"),
         ):
-            if not run(command, folder, done, log):
+            if not run(command, directory, done, log):
                 return False
         return True
 
 
 def package_name(repo: Path, vendor: str) -> str | None:
-    """The name in the repository's composer.json, if it is a package of vendor's."""
+    """The name in the repository's composer.json, if it is a package of vendor's. A project,
+    Composer's type for an app, is no package to publish."""
     try:
-        name = json.loads((repo / "composer.json").read_text()).get("name")
-    except (OSError, ValueError, AttributeError):
+        composer = json.loads((repo / "composer.json").read_text())
+    except (OSError, ValueError):
         return None
+    if not isinstance(composer, dict) or composer.get("type") == "project":
+        return None
+    name = composer.get("name")
     if isinstance(name, str) and name.startswith(f"{vendor}/"):
         return name
     return None
 
 
-def run(command: str, folder: Folder, done: str, log: Log) -> bool:
+def run(command: str, directory: Directory, done: str, log: Log) -> bool:
     """Runs a packagist command on the repository, and logs it if it changed anything. Says
     whether it worked."""
-    result = subprocess.run([PACKAGIST, command, str(folder.path)], capture_output=True, text=True)
+    result = subprocess.run(
+        [PACKAGIST, command, str(directory.path)], capture_output=True, text=True
+    )
     if result.returncode != 0:
         log(
             False,

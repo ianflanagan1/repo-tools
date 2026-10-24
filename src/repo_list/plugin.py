@@ -1,4 +1,4 @@
-"""What a plugin is: a check of each folder repo-list finds, and, optionally, a fix for what it
+"""What a plugin is: a check of each directory repo-list finds, and, optionally, a fix for what it
 finds, which repo-fix runs at the plugin's stage.
 
 repo-list runs every plugin's check, in the order the plugins are given, and shows what each
@@ -13,14 +13,14 @@ from enum import Enum
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
-    from repo_list.scan import Folder
+    from repo_list.scan import Directory
 
 
 class Stage(Enum):
     """When repo-fix runs a plugin's fix. The stages run in this order."""
 
     INIT = "init"
-    """Make a folder of files a repository."""
+    """Make a directory of files a repository."""
     COMMIT = "commit"
     """Commit the work in the working tree."""
     BEFORE_PUSH = "before-push"
@@ -41,7 +41,7 @@ class Problem(Protocol):
 
 @dataclass(frozen=True)
 class Note:
-    """A finding worth showing beside the folder that needs no attention, such as the branch
+    """A finding worth showing beside the directory that needs no attention, such as the branch
     checked out. A check's finding is one by subclassing this. repo-list shows notes in a column
     of their own, before the problems."""
 
@@ -51,6 +51,30 @@ class Note:
 
     def describe(self) -> str:
         return self.text
+
+
+class Slot(Enum):
+    """Where a badge goes in its column, in this order."""
+
+    MODE = "mode"
+    """The integration mode."""
+    HOST = "host"
+    """Where the remote repository is, such as GitHub, or that there's none."""
+    VISIBILITY = "visibility"
+    """Who can see the remote repository."""
+
+
+@dataclass(frozen=True)
+class Badge:
+    """An icon saying what kind of repository a directory is, shown in a column of its own
+    between the mark and the path, and explained in the README. Each icon is two columns wide,
+    and from Unicode 11 or earlier, the widths VS Code's terminal knows."""
+
+    slot: Slot
+    icon: str
+
+    def describe(self) -> str:
+        return self.icon
 
 
 class Log(Protocol):
@@ -64,20 +88,20 @@ class Plugin(Protocol):
     """Unique among the plugins."""
     stage: Stage | None = None
     """When repo-fix runs the fix, or None for a plugin that only checks."""
-    checks_folders: bool = False
-    """Whether the check also sees folders that aren't repositories."""
+    checks_directories: bool = False
+    """Whether the check also sees directories that aren't repositories."""
 
-    def check(self, folder: Folder) -> list[Problem]:
-        """What in the folder needs attention.
+    def check(self, directory: Directory) -> list[Problem]:
+        """What in the directory needs attention.
 
         Raises CalledProcessError when git can't read the repository, which is then reported as
         that alone.
         """
         ...
 
-    def fix(self, folder: Folder, problems: list[Problem], log: Log) -> bool:
+    def fix(self, directory: Directory, problems: list[Problem], log: Log) -> bool:
         """Fixes what it can of problems, which its check has just found, logging what it did.
-        False stops repo-fix's work on the folder there."""
+        False stops repo-fix's work on the directory there."""
         return True
 
 

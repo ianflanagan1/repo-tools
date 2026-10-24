@@ -1,4 +1,5 @@
-"""Behaviour of repo-fix, with claude and github replaced by scripts that record their calls."""
+"""Behaviour of repo-fix, with claude, github, packagist and npmjs replaced by scripts that
+record their calls."""
 
 import json
 import subprocess
@@ -8,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from repo_list import fix
-from repo_list.plugins import github, packagist, uncommitted
+from repo_list.plugins import github, npm, packagist, uncommitted
 
 COMMITS = """git add -A && git commit -qm "Fake commit" && echo '{"result": "✅ Committed."}'"""
 DOES_NOTHING = """printf '%s' '{"result": "🛑 Stopped.\\nThe check failed."}'"""
@@ -40,6 +41,24 @@ else:
 json.dump(lacking, open(os.environ["PACKAGIST_STATE"], "w"))
 EOF"""
 
+# The fake npmjs changes what the fake npm lacks, in the file conftest's npm reads.
+NPMJS = """python3 - "$@" <<'EOF'
+import json, os, sys
+command, directory = sys.argv[1:3]
+name = json.load(open(os.path.join(directory, "package.json")))["name"]
+url = f"https://www.npmjs.com/package/{name}"
+lacking = json.load(open(os.environ["NPM_STATE"]))
+if command == "publish":
+    lacking[name] = []
+    print(f"Published {name}@0.1.0", "✅ Published.", url, sep="\\n")
+elif lacking[name]:
+    lacking[name] = []
+    print("✅ Published.", url, sep="\\n")
+else:
+    print(f"➖ Already published: {url}")
+json.dump(lacking, open(os.environ["NPM_STATE"], "w"))
+EOF"""
+
 
 class Fakes:
     """Stand-ins for claude and github, each a script that logs its arguments and directory."""
@@ -49,10 +68,12 @@ class Fakes:
         self.dir.mkdir()
         self.remote = tmp_path / "remotes" / "published.git"
         self.packagist_state = tmp_path / "packagist.json"
+        self.npm_state = tmp_path / "npm.json"
         self.monkeypatch = monkeypatch
         self.claude(COMMITS)
         self.github(PUBLISHES)
         self.packagist(PACKAGIST)
+        self.npmjs(NPMJS)
 
     def claude(self, action: str) -> None:
         self.monkeypatch.setattr(uncommitted, "CLAUDE", str(self._script("claude", action)))
@@ -62,6 +83,9 @@ class Fakes:
 
     def packagist(self, action: str) -> None:
         self.monkeypatch.setattr(packagist, "PACKAGIST", str(self._script("packagist", action)))
+
+    def npmjs(self, action: str) -> None:
+        self.monkeypatch.setattr(npm, "NPMJS", str(self._script("npmjs", action)))
 
     def calls(self, name: str) -> list[list[str]]:
         """Each call's directory, then its arguments."""
@@ -75,6 +99,7 @@ class Fakes:
             "#!/bin/sh\n"
             f"REMOTE='{self.remote}'\n"
             f"export PACKAGIST_STATE='{self.packagist_state}'\n"
+            f"export NPM_STATE='{self.npm_state}'\n"
             f"python3 -c 'import json, os, sys; print(json.dumps([os.getcwd(), *sys.argv[1:]]))'"
             f' "$@" >> "{log}"\n'
             f"{action}\n"
@@ -89,9 +114,9 @@ def fakes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, projects) -> Fakes:
     shared = tmp_path / "skills-repo" / "shared" / "references"
     shared.mkdir(parents=True)
     (shared / "guide.md").write_text("guide\n")
-    skill = Path.home() / ".claude" / "skills" / "commit"
+    skill = Path.home() / ".claude" / "skills" / "ianf-commit"
     skill.mkdir(parents=True)
-    (skill / "SKILL.md").write_text("---\nname: commit\n---\n")
+    (skill / "SKILL.md").write_text("---\nname: ianf-commit\n---\n")
     (skill / "references").symlink_to(shared)
     return Fakes(tmp_path, monkeypatch)
 
@@ -102,6 +127,8 @@ class Result:
     """What it did, repository by repository."""
     listing: list[str]
     """repo-list's lines for the state it left."""
+    summary: str
+    """repo-list's total for the state it left."""
     status: int
 
 
@@ -110,9 +137,12 @@ def repo_fix(capsys: pytest.CaptureFixture[str], fakes):
     def repo_fix(*args: str | Path) -> Result:
         status = fix.main([str(a) for a in args])
         out = capsys.readouterr().out.rstrip("\n")
-        sections = out.split("\n\n")
-        progress = sections[0].splitlines() if len(sections) == 3 else []
-        return Result(progress, sections[-2].splitlines(), status)
+        *sections, summary = [s.splitlines() for s in out.split("\n\n")]
+        # What was done is indented under each path; repo-list's lines never are.
+        done = sections and any(line.startswith("  ") for line in sections[0])
+        progress = sections.pop(0) if done else []
+        listing = sections[0] if sections else []
+        return Result(progress, listing, summary[0], status)
 
     return repo_fix
 
@@ -138,7 +168,7 @@ def test_uncommitted_work_is_committed_by_running_the_commit_skill_in_the_reposi
     result = repo_fix()
     [(directory, *args)] = fakes.calls("claude")
     assert Path(directory) == a
-    assert args[:2] == ["-p", "/commit"]
+    assert args[:2] == ["-p", "/ianf-commit"]
     assert subjects(a) == ["init", "Fake commit"]
     head = git(a, "rev-parse", "--short", "HEAD")
     assert result.progress[:2] == ["a", f"  ✔ Committed {head} Fake commit"]
@@ -160,7 +190,7 @@ def test_the_new_commits_are_pushed(projects, repo_fix):
     (a / "g").write_text("new\n")
     result = repo_fix()
     assert subjects(projects.origin(a)) == ["init", "Fake commit"]
-    assert result.listing == ["✔ a  main"]
+    assert result.summary == "✔ All 1 clean"
     assert result.status == 0
 
 
@@ -188,7 +218,7 @@ def test_a_commit_run_that_commits_nothing_fails_with_what_claude_said(projects,
         "    🛑 Stopped.",
         "    The check failed.",
     ]
-    assert result.listing == ["✘ a  main  📝 1 uncommitted file"]
+    assert result.listing == ["✘ 🏠 ❔    a  main  📝 1 uncommitted file"]
 
 
 def test_a_commit_run_that_rewrites_earlier_commits_fails_and_pushes_nothing(
@@ -202,18 +232,44 @@ def test_a_commit_run_that_rewrites_earlier_commits_fails_and_pushes_nothing(
     result = repo_fix()
     assert result.progress == [
         "a",
-        f"  ✘ Commit failed: it rewrote commits made before it; the branch was at {start}",
+        f"  ✘ Commit failed: it rewrote commits made before it; HEAD was at {start}",
     ]
     assert subjects(projects.origin(a)) == ["init"]
 
 
-def test_work_on_a_detached_head_is_not_committed(projects, fakes, repo_fix):
+def test_work_on_a_detached_head_is_committed_there(projects, fakes, repo_fix):
     a = projects.pushed_repo("a")
     git(a, "checkout", "-q", "--detach")
     (a / "g").write_text("new\n")
     result = repo_fix()
+    assert subjects(a) == ["init", "Fake commit"]
+    head = git(a, "rev-parse", "--short", "HEAD")
+    assert result.progress == ["a", f"  ✔ Committed {head} Fake commit"]
+    assert result.listing == [f"✘ 🏠 ❔    a  @{head}  👻 1 commit on detached HEAD"]
+
+
+def test_in_pr_modes_work_on_the_trunk_is_not_committed_as_it_belongs_on_a_branch(
+    projects, fakes, repo_fix
+):
+    projects.integration("pr-merge")
+    a = projects.pushed_repo("a")
+    (a / "g").write_text("new\n")
+    result = repo_fix()
     assert fakes.calls("claude") == []
-    assert result.progress == ["a", "  ✘ Not committing: HEAD is detached"]
+    assert result.progress == [
+        "a",
+        "  ✘ Not committing on main: work goes on a branch, for a pull request",
+    ]
+
+
+def test_in_pr_modes_work_on_a_branch_is_committed_and_pushed(projects, fakes, repo_fix):
+    projects.integration("pr-merge")
+    a = projects.pushed_repo("a")
+    git(a, "checkout", "-qb", "feature")
+    (a / "g").write_text("new\n")
+    result = repo_fix()
+    assert result.progress[-1] == "  ✔ Pushed feature to origin, now its upstream"
+    assert subjects(projects.origin(a), "feature") == ["init", "Fake commit"]
 
 
 def test_work_during_a_merge_is_not_committed(projects, fakes, repo_fix):
@@ -228,7 +284,7 @@ def test_work_during_a_merge_is_not_committed(projects, fakes, repo_fix):
 def test_without_the_commit_skill_nothing_is_committed(projects, fakes, repo_fix):
     a = projects.pushed_repo("a")
     (a / "g").write_text("new\n")
-    skill = Path.home() / ".claude" / "skills" / "commit"
+    skill = Path.home() / ".claude" / "skills" / "ianf-commit"
     (skill / "SKILL.md").unlink()
     result = repo_fix()
     assert fakes.calls("claude") == []
@@ -246,9 +302,10 @@ def test_unpushed_commits_are_pushed_to_the_branch_upstream(projects, repo_fix):
     assert subjects(projects.origin(a)) == ["init", "local"]
 
 
-def test_a_branch_without_an_upstream_is_pushed_to_the_only_remote_and_tracks_it(
+def test_in_pr_modes_a_branch_without_an_upstream_is_pushed_to_the_only_remote_and_tracks_it(
     projects, repo_fix
 ):
+    projects.integration("pr-merge")
     a = projects.pushed_repo("a")
     git(a, "checkout", "-qb", "feature")
     projects.commit(a, "feature work")
@@ -260,6 +317,7 @@ def test_a_branch_without_an_upstream_is_pushed_to_the_only_remote_and_tracks_it
 def test_a_branch_without_an_upstream_is_not_pushed_when_there_are_several_remotes(
     projects, repo_fix
 ):
+    projects.integration("pr-merge")
     a = projects.pushed_repo("a")
     git(a, "remote", "add", "second", str(projects.origin(a)))
     git(a, "checkout", "-qb", "feature")
@@ -287,9 +345,40 @@ def test_branches_behind_their_upstream_are_fast_forwarded_whether_checked_out_o
     assert (a / "f").read_text() == "init\nahead\n"
 
 
-def test_a_branch_that_has_diverged_from_its_upstream_is_neither_pushed_nor_pulled(
+def test_in_local_mode_a_trunk_that_has_diverged_from_its_upstream_is_rebased_onto_it(
     projects, repo_fix
 ):
+    a = projects.pushed_repo("a")
+    projects.push_from_elsewhere(a)
+    (a / "g").write_text("local\n")
+    git(a, "add", "g")
+    git(a, "commit", "-qm", "local")
+    result = repo_fix()
+    assert result.progress == [
+        "a",
+        "  ✔ Rebased main onto origin/main",
+        "  ✔ Pushed main to origin",
+    ]
+    assert subjects(projects.origin(a)) == ["init", "ahead", "local"]
+
+
+def test_a_trunk_whose_rebase_onto_its_upstream_conflicts_is_left_as_it_was(projects, repo_fix):
+    a = projects.pushed_repo("a")
+    projects.push_from_elsewhere(a)
+    projects.commit(a, "local")
+    result = repo_fix()
+    assert result.progress == [
+        "a",
+        "  ✘ Rebase main onto origin/main stopped at a conflict, so it was undone",
+    ]
+    assert subjects(a) == ["init", "local"]
+    assert git(a, "status", "--porcelain") == ""
+
+
+def test_in_pr_modes_a_branch_that_has_diverged_from_its_upstream_is_neither_pushed_nor_pulled(
+    projects, repo_fix
+):
+    projects.integration("pr-merge")
     a = projects.pushed_repo("a")
     projects.push_from_elsewhere(a)
     projects.commit(a, "local")
@@ -315,7 +404,148 @@ def test_a_repository_whose_fetch_fails_is_neither_pushed_nor_pulled(projects, r
     git(a, "remote", "set-url", "origin", str(projects.remotes / "missing.git"))
     result = repo_fix()
     assert result.progress == []
-    assert result.listing == ["✘ a  main  📤 1 unpushed on main  📡 fetch failed"]
+    assert result.listing == ["✘ 🏠 ❔    a  main  📤 1 unpushed on main  📡 fetch failed"]
+
+
+# --- Worktrees and the trunk
+
+
+def test_the_trunk_is_updated_before_a_worktree_is_rebased_onto_it(projects, fakes, repo_fix):
+    a = projects.pushed_repo("a")
+    wt = projects.worktree(a, "0-wt", "--detach")
+    (wt / "g").write_text("wt work\n")
+    git(wt, "add", "g")
+    git(wt, "commit", "-qm", "wt work")
+    projects.push_from_elsewhere(a)
+    result = repo_fix()
+    assert result.progress == [
+        "a",
+        "  ✔ Fast-forwarded main to origin/main",
+        "0-wt",
+        "  ✔ Rebased onto main",
+    ]
+    assert subjects(wt) == ["init", "ahead", "wt work"]
+
+
+def test_in_local_mode_work_on_another_branch_is_never_pushed(projects, fakes, repo_fix):
+    a = projects.pushed_repo("a")
+    wt = projects.worktree(a, "a-wt", "-b", "feature")
+    projects.commit(wt, "feature work")
+    result = repo_fix()
+    assert result.progress == []
+    assert result.listing == ["✘ a-wt  feature  🛬 1 unmerged on feature"]
+    assert git(projects.origin(a), "branch", "--list", "feature") == ""
+
+
+def test_a_worktree_is_not_caught_up_with_a_trunk_that_failed_to_update(projects, fakes, repo_fix):
+    a = projects.pushed_repo("a")
+    projects.commit(a, "two")
+    wt = projects.root / "a-wt"
+    git(a, "worktree", "add", "-q", "--detach", str(wt), "main~1")
+    projects.push_from_elsewhere(a)
+    result = repo_fix()
+    assert result.progress == [
+        "a",
+        "  ✘ Rebase main onto origin/main stopped at a conflict, so it was undone",
+        "a-wt",
+        "  ✘ Not catching up with main: updating it failed",
+    ]
+    assert subjects(wt) == ["init"]
+
+
+def test_a_worktree_whose_catching_up_would_conflict_is_left_for_you(projects, fakes, repo_fix):
+    a = projects.pushed_repo("a")
+    wt = projects.worktree(a, "a-wt", "-b", "feature")
+    projects.commit(wt, "feature work")
+    projects.commit(a, "more")
+    git(a, "push", "-q")
+    result = repo_fix()
+    assert result.progress == [
+        "a-wt",
+        "  ✘ Not catching up with main: it would conflict, which is for you",
+    ]
+
+
+def test_in_pr_rebase_mode_a_branch_is_rebased_onto_the_remote_trunk_and_pushed_with_a_lease(
+    projects, fakes, repo_fix
+):
+    projects.integration("pr-rebase")
+    a = projects.pushed_repo("a")
+    git(a, "checkout", "-qb", "feature")
+    (a / "g").write_text("feature work\n")
+    git(a, "add", "g")
+    git(a, "commit", "-qm", "feature work")
+    git(a, "push", "-qu", "origin", "feature")
+    projects.push_from_elsewhere(a)
+    result = repo_fix()
+    assert result.progress == [
+        "a",
+        "  ✔ Fast-forwarded main to origin/main",
+        "  ✔ Rebased onto origin/main",
+        "  ✔ Pushed feature to origin, with a lease",
+    ]
+    assert subjects(projects.origin(a), "feature") == ["init", "ahead", "feature work"]
+
+
+def test_in_pr_merge_mode_the_remote_trunk_is_merged_into_a_branch_and_pushed(
+    projects, fakes, repo_fix
+):
+    projects.integration("pr-merge")
+    a = projects.pushed_repo("a")
+    git(a, "checkout", "-qb", "feature")
+    (a / "g").write_text("feature work\n")
+    git(a, "add", "g")
+    git(a, "commit", "-qm", "feature work")
+    git(a, "push", "-qu", "origin", "feature")
+    projects.push_from_elsewhere(a)
+    result = repo_fix()
+    assert result.progress == [
+        "a",
+        "  ✔ Fast-forwarded main to origin/main",
+        "  ✔ Merged origin/main",
+        "  ✔ Pushed feature to origin",
+    ]
+    assert git(projects.origin(a), "log", "-1", "--format=%P", "feature").count(" ") == 1
+
+
+# --- Configuration
+
+
+def test_a_repository_with_no_integration_mode_set_is_left_alone(projects, fakes, repo_fix):
+    projects.integration(None)
+    a = projects.pushed_repo("a")
+    projects.commit(a, "local")
+    (a / "g").write_text("new\n")
+    result = repo_fix()
+    assert fakes.calls("claude") == []
+    assert result.progress == [
+        "a",
+        "  ✘ 🔧 Set `integration` in .workspace.toml under [repo-tools]",
+    ]
+    assert subjects(projects.origin(a)) == ["init"]
+
+
+# --- Claude at work
+
+
+def test_a_directory_a_claude_code_session_is_busy_in_is_left_alone(projects, fakes, repo_fix):
+    a = projects.pushed_repo("a")
+    (a / "g").write_text("new\n")
+    projects.claude_session(a, "s1", "busy")
+    result = repo_fix()
+    assert fakes.calls("claude") == []
+    assert result.progress == ["a", "  ✘ Left alone: a Claude Code session is working here"]
+
+
+def test_the_claude_code_session_running_repo_fix_does_not_stop_it(
+    projects, fakes, repo_fix, monkeypatch
+):
+    a = projects.pushed_repo("a")
+    (a / "g").write_text("new\n")
+    projects.claude_session(a, "me", "busy")
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "me")
+    repo_fix()
+    assert subjects(a) == ["init", "Fake commit"]
 
 
 # --- Publishing
@@ -331,7 +561,7 @@ def test_a_repository_without_a_remote_is_published_with_github_publish(projects
         "    Created me/thing (public)",
         "    https://github.com/me/thing",
     ]
-    assert result.listing == ["✔ a  main"]
+    assert result.summary == "✔ All 1 clean"
 
 
 def test_the_no_ci_wait_flag_is_passed_to_github_publish(projects, fakes, repo_fix):
@@ -352,10 +582,13 @@ def test_a_failed_publish_is_reported_with_its_output(projects, fakes, repo_fix)
     fakes.github(REFUSES)
     result = repo_fix()
     assert result.progress == ["a", "  ✘ Publish failed:", "    ⚠️ Not today."]
-    assert result.listing == ["✘ a  main  🔌 no remote"]
+    assert result.listing == ["✘ 🏠 🔌    a  main  🔌 no remote"]
 
 
-def test_other_branches_are_pushed_once_the_repository_is_published(projects, fakes, repo_fix):
+def test_in_pr_modes_other_branches_are_pushed_once_the_repository_is_published(
+    projects, fakes, repo_fix
+):
+    projects.integration("pr-merge")
     a = projects.local_repo("a")
     git(a, "branch", "feature")
     git(a, "checkout", "-q", "feature")
@@ -363,7 +596,7 @@ def test_other_branches_are_pushed_once_the_repository_is_published(projects, fa
     git(a, "checkout", "-q", "main")
     result = repo_fix()
     assert result.progress[-1] == "  ✔ Pushed feature to origin, now its upstream"
-    assert result.listing == ["✔ a  main"]
+    assert result.summary == "✔ All 1 clean"
 
 
 # --- Packagist
@@ -383,7 +616,7 @@ def test_a_package_not_on_packagist_is_published_there(projects, fakes, repo_fix
         ["publish", str(a)],
         ["update", str(a)],
     ]
-    assert (result.listing, result.status) == (["✔ a  main"], 0)
+    assert (result.summary, result.status) == ("✔ All 1 clean", 0)
 
 
 def test_a_package_packagist_lacks_versions_of_is_updated_there(
@@ -398,14 +631,14 @@ def test_a_package_packagist_lacks_versions_of_is_updated_there(
         "    Asked Packagist to update me/a",
         "    https://packagist.org/packages/me/a",
     ]
-    assert (result.listing, result.status) == (["✔ a  main"], 0)
+    assert (result.summary, result.status) == ("✔ All 1 clean", 0)
 
 
 def test_a_package_packagist_is_up_to_date_on_is_left_alone(projects, packagist, fakes, repo_fix):
     projects.package("a")
     packagist.has("me/a")
     result = repo_fix("-p")
-    assert (result.progress, result.listing) == ([], ["✔ a  main"])
+    assert (result.progress, result.summary) == ([], "✔ All 1 clean")
     assert fakes.calls("packagist") == []
 
 
@@ -425,20 +658,79 @@ def test_a_failed_packagist_publish_is_reported_and_no_update_is_tried(projects,
     result = repo_fix("-p")
     assert result.progress == ["a", "  ✘ Packagist publish failed:", "    ⚠️ Not today."]
     assert [call[1:] for call in fakes.calls("packagist")] == [["publish", str(a)]]
-    assert (result.listing, result.status) == (["✘ a  main  🐘 not on Packagist"], 1)
+    assert (result.listing, result.status) == (["✘ 🏠 ❔    a  main  🐘 not on Packagist"], 1)
 
 
 def test_without_the_packagist_flag_packagist_is_left_alone(projects, fakes, repo_fix):
     projects.package("a")
     result = repo_fix()
-    assert (result.progress, result.listing) == ([], ["✔ a  main"])
+    assert (result.progress, result.summary) == ([], "✔ All 1 clean")
     assert fakes.calls("packagist") == []
 
 
-# --- Folders that are not repositories
+# --- npm
 
 
-def test_a_folder_of_files_is_left_alone_by_default(projects, fakes, repo_fix):
+def test_a_package_not_on_npm_is_published_there_and_waited_for(projects, fakes, repo_fix):
+    a = projects.npm_package("a", {"name": "@me/a"})
+    result = repo_fix("--npm")
+    assert result.progress == ["a", "  ✔ Published on npm"]
+    assert [call[1:] for call in fakes.calls("npmjs")] == [
+        ["publish", str(a)],
+        ["wait", str(a)],
+    ]
+    assert (result.summary, result.status) == ("✔ All 1 clean", 0)
+
+
+def test_the_version_tags_npm_lacks_are_waited_for(projects, npm, fakes, repo_fix):
+    a = projects.npm_package("a", {"name": "@me/a"})
+    npm.has("@me/a", lacking=["v0.2.0"])
+    result = repo_fix("--npm")
+    assert result.progress == [
+        "a",
+        "  ✔ npm published v0.2.0:",
+        "    https://www.npmjs.com/package/@me/a",
+    ]
+    assert [call[1:] for call in fakes.calls("npmjs")] == [["wait", str(a)]]
+    assert (result.summary, result.status) == ("✔ All 1 clean", 0)
+
+
+def test_a_package_npm_is_up_to_date_on_is_left_alone(projects, npm, fakes, repo_fix):
+    projects.npm_package("a", {"name": "@me/a"})
+    npm.has("@me/a", lacking=[])
+    result = repo_fix("--npm")
+    assert (result.progress, result.summary) == ([], "✔ All 1 clean")
+    assert fakes.calls("npmjs") == []
+
+
+def test_a_failed_npm_publish_is_reported_and_nothing_is_waited_for(projects, fakes, repo_fix):
+    a = projects.npm_package("a", {"name": "@me/a"})
+    fakes.npmjs(REFUSES)
+    result = repo_fix("--npm")
+    assert result.progress == ["a", "  ✘ npm publish failed"]
+    assert [call[1:] for call in fakes.calls("npmjs")] == [["publish", str(a)]]
+    assert (result.listing, result.status) == (["✘ 🏠 ❔    a  main  🟥 not on npm"], 1)
+
+
+def test_a_failed_wait_is_reported_with_what_npmjs_said(projects, npm, fakes, repo_fix):
+    projects.npm_package("a", {"name": "@me/a"})
+    npm.has("@me/a", lacking=["v0.2.0"])
+    fakes.npmjs(REFUSES)
+    result = repo_fix("--npm")
+    assert result.progress == ["a", "  ✘ npm wait failed:", "    ⚠️ Not today."]
+
+
+def test_without_the_npm_flag_npm_is_left_alone(projects, fakes, repo_fix):
+    projects.npm_package("a", {"name": "@me/a"})
+    result = repo_fix()
+    assert (result.progress, result.summary) == ([], "✔ All 1 clean")
+    assert fakes.calls("npmjs") == []
+
+
+# --- Directories that are not repositories
+
+
+def test_a_directory_of_files_is_left_alone_by_default(projects, fakes, repo_fix):
     (projects.root / "notes").mkdir()
     (projects.root / "notes" / "todo").write_text("x\n")
     result = repo_fix()
@@ -447,14 +739,16 @@ def test_a_folder_of_files_is_left_alone_by_default(projects, fakes, repo_fix):
     assert fakes.calls("claude") == fakes.calls("github") == []
 
 
-def test_the_init_flag_makes_a_folder_of_files_a_published_repository(projects, fakes, repo_fix):
+def test_the_init_flag_makes_a_directory_of_files_a_published_repository(projects, fakes, repo_fix):
     notes = projects.root / "notes"
     notes.mkdir()
     (notes / "todo").write_text("x\n")
     result = repo_fix("--init")
     assert result.progress[:2] == ["notes", "  ✔ Initialised a git repository"]
     assert subjects(fakes.remote) == ["Fake commit"]
-    assert result.listing == ["✔ notes  main"]
+    assert result.listing == [
+        "✘ 🔧 ❔    notes  main  🔧 Set `integration` in .workspace.toml under [repo-tools]"
+    ]
 
 
 # --- What it leaves alone
@@ -469,7 +763,7 @@ def test_stashes_and_commits_on_a_detached_head_are_left_for_you(projects, fakes
     result = repo_fix()
     assert result.progress == []
     assert result.listing == [
-        f"✘ a  @{projects.short_head(a)}  👻 1 commit on detached HEAD  📦 1 stash"
+        f"✘ 🏠 ❔    a  @{projects.short_head(a)}  👻 1 commit on detached HEAD  📦 1 stash"
     ]
     assert result.status == 1
 
@@ -477,7 +771,7 @@ def test_stashes_and_commits_on_a_detached_head_are_left_for_you(projects, fakes
 def test_a_clean_repository_has_nothing_done_to_it(projects, fakes, repo_fix):
     projects.pushed_repo("a")
     result = repo_fix()
-    assert (result.progress, result.listing, result.status) == ([], ["✔ a  main"], 0)
+    assert (result.progress, result.summary, result.status) == ([], "✔ All 1 clean", 0)
     assert fakes.calls("claude") == fakes.calls("github") == []
 
 
@@ -491,11 +785,11 @@ def test_a_path_to_a_repository_fixes_only_that_repository(projects, repo_fix):
     projects.commit(b, "local")
     result = repo_fix(b)
     assert result.progress == ["b", "  ✔ Pushed main to origin"]
-    assert result.listing == ["✔ b  main"]
+    assert result.summary == "✔ All 1 clean"
     assert subjects(projects.origin(a)) == ["init"]
 
 
-def test_a_path_to_a_folder_fixes_every_repository_under_it(projects, repo_fix):
+def test_a_path_to_a_directory_fixes_every_repository_under_it(projects, repo_fix):
     (projects.root / "group").mkdir()
     a = projects.pushed_repo("group/a")
     b = projects.pushed_repo("group/b")
@@ -503,7 +797,7 @@ def test_a_path_to_a_folder_fixes_every_repository_under_it(projects, repo_fix):
     projects.commit(b, "local")
     result = repo_fix(projects.root / "group")
     assert result.progress == ["a", "  ✔ Pushed main to origin", "b", "  ✔ Pushed main to origin"]
-    assert result.listing == ["✔ a  main", "✔ b  main"]
+    assert result.summary == "✔ All 2 clean"
 
 
 def test_with_no_path_it_fixes_every_repository_in_projects_wherever_it_is_run_from(
@@ -522,7 +816,7 @@ def test_with_no_path_it_fixes_every_repository_in_projects_wherever_it_is_run_f
         "group/a",
         "  ✔ Pushed main to origin",
     ]
-    assert result.listing == ["✔ b        main", "✔ group/a  main"]
+    assert result.summary == "✔ All 2 clean"
 
 
 # --- Colour

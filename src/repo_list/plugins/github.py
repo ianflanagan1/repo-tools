@@ -7,7 +7,7 @@ from pathlib import Path
 
 from repo_list.git import git
 from repo_list.plugin import Log, Plugin, Problem, Stage
-from repo_list.scan import Folder
+from repo_list.scan import Directory
 
 GITHUB = str(Path(sys.prefix) / "bin" / "github")
 
@@ -25,12 +25,12 @@ class GitHub(Plugin):
     def __init__(self, wait_for_ci: bool) -> None:
         self.wait_for_ci = wait_for_ci
 
-    def check(self, folder: Folder) -> list[Problem]:
-        return [] if git(folder.path, "remote") else [NoRemote()]
+    def check(self, directory: Directory) -> list[Problem]:
+        return [] if git(directory.path, "remote") else [NoRemote()]
 
-    def fix(self, folder: Folder, problems: list[Problem], log: Log) -> bool:
+    def fix(self, directory: Directory, problems: list[Problem], log: Log) -> bool:
         """Publishes the repository with github publish. Says whether it worked."""
-        command = [GITHUB, "publish", str(folder.path)]
+        command = [GITHUB, "publish", str(directory.path)]
         if not self.wait_for_ci:
             command.append("--no-ci-wait")
         result = subprocess.run(command, capture_output=True, text=True)

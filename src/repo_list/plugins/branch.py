@@ -2,14 +2,15 @@
 Shown, not fixed, and never needing attention by itself: a detached HEAD's own commits are the
 detached plugin's to report.
 
-The default branch is dimmed, as the expected case, so that any other stands out.
+The default branch is dimmed, as the expected case, so that any other stands out. It's the one
+git-default-branch tells, as everywhere in repo-tools.
 """
 
 from dataclasses import dataclass
 
 from repo_list.git import git
 from repo_list.plugin import Note, Plugin, Problem
-from repo_list.scan import Folder
+from repo_list.scan import Directory
 
 
 @dataclass(frozen=True)
@@ -32,19 +33,9 @@ def assess(head: Head) -> list[Problem]:
 class Branch(Plugin):
     name = "branch"
 
-    def check(self, folder: Folder) -> list[Problem]:
-        repo = folder.path
+    def check(self, directory: Directory) -> list[Problem]:
+        repo = directory.path
         branch = git(repo, "symbolic-ref", "-q", "--short", "HEAD", check=False) or None
         commit = git(repo, "rev-parse", "-q", "--short", "--verify", "HEAD", check=False)
-        return assess(Head(branch, commit, default_branch(folder)))
-
-
-def default_branch(folder: Folder) -> str:
-    """The branch origin's HEAD names, or else init.defaultBranch, main by default."""
-    repo = folder.path
-    origin_head = git(
-        repo, "symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD", check=False
-    )
-    if origin_head:
-        return origin_head.removeprefix("origin/")
-    return git(repo, "config", "init.defaultBranch", check=False) or "main"
+        trunk = directory.place.trunk if directory.place else None
+        return assess(Head(branch, commit, trunk))

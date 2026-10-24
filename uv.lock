@@ -17,6 +17,23 @@ wheels = [
 ]
 
 [[package]]
+name = "git-default-branch"
+version = "0.1.0"
+source = { editable = "../git-default-branch" }
+dependencies = [
+    { name = "cli-kit" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "cli-kit", git = "https://github.com/ianflanagan1/cli-kit?branch=main" }]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=8" },
+    { name = "ruff", specifier = ">=0.6" },
+]
+
+[[package]]
 name = "iniconfig"
 version = "2.3.1"
 source = { registry = "https://pypi.org/simple" }
@@ -74,6 +91,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "cli-kit" },
+    { name = "git-default-branch" },
 ]
 
 [package.dev-dependencies]
@@ -83,7 +101,10 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "cli-kit", git = "https://github.com/ianflanagan1/cli-kit?branch=main" }]
+requires-dist = [
+    { name = "cli-kit", git = "https://github.com/ianflanagan1/cli-kit?branch=main" },
+    { name = "git-default-branch", editable = "../git-default-branch" },
+]
 
 [package.metadata.requires-dev]
 dev = [

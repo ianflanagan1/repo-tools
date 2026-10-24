@@ -10,7 +10,7 @@ names it. Each step is skipped when already done, so it is safe to re-run after 
 
 GitHub redirects the old name to the new one, for git, web links and the API, until a repo
 takes the old name. Packagist matches the webhook's pushes to a package by its repository URL,
-so it is pointed at the new one too. The clone's folder keeps its name.
+so it is pointed at the new one too. The clone's directory keeps its name.
 """
 
 from pathlib import Path

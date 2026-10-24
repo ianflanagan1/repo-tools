@@ -27,6 +27,7 @@ SCOPES = (
     "read:repository:bitbucket",
     "admin:repository:bitbucket",
     "read:pullrequest:bitbucket",
+    "write:pullrequest:bitbucket",
     "read:pipeline:bitbucket",
 )
 
@@ -152,6 +153,31 @@ class Bitbucket:
             {"q": " AND ".join(clauses), "sort": "-updated_on", "state": "MERGED"}
         )
         return self._pages(self._url("repositories", repo, "pullrequests") + "?" + query)
+
+    def open_pull_requests(self, repo: str, branch: str) -> int:
+        """How many open pull requests the repo has from branch."""
+        clauses = [f"source.branch.name = {json.dumps(branch)}", 'state = "OPEN"']
+        query = urllib.parse.urlencode({"q": " AND ".join(clauses)})
+        url = self._url("repositories", repo, "pullrequests") + "?" + query
+        return len(list(self._pages(url)))
+
+    def create_draft_pull_request(
+        self, repo: str, branch: str, base: str, title: str, body: str
+    ) -> str:
+        """Opens a draft pull request from branch into base, and returns its URL. The token
+        needs the write:pullrequest:bitbucket scope."""
+        created = self._send(
+            "POST",
+            self._url("repositories", repo, "pullrequests"),
+            {
+                "title": title,
+                "description": body,
+                "source": {"branch": {"name": branch}},
+                "destination": {"branch": {"name": base}},
+                "draft": True,
+            },
+        )
+        return created["links"]["html"]["href"]
 
     def commit(self, repo: str, revision: str) -> dict:
         return self._send("GET", self._url("repositories", repo, "commit", revision))

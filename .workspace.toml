@@ -1,0 +1,3 @@
+# How work reaches the trunk, for repo-list and repo-fix. See ~/projects/cli/repo-tools.
+[repo-tools]
+integration = "local"

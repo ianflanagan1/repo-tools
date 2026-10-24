@@ -31,3 +31,22 @@ def batch_env() -> dict[str, str]:
         "GIT_TERMINAL_PROMPT": "0",
         "GIT_SSH_COMMAND": os.environ.get("GIT_SSH_COMMAND", "ssh") + " -o BatchMode=yes",
     }
+
+
+# The marker git leaves in the git directory during each operation that a commit, rebase or merge
+# must not interrupt.
+IN_PROGRESS = {
+    "MERGE_HEAD": "a merge",
+    "rebase-merge": "a rebase",
+    "rebase-apply": "a rebase",
+    "CHERRY_PICK_HEAD": "a cherry-pick",
+    "REVERT_HEAD": "a revert",
+}
+
+
+def in_progress(repo: Path) -> str | None:
+    """The operation in progress in repo, such as "a merge", or None."""
+    for marker, operation in IN_PROGRESS.items():
+        if (repo / git(repo, "rev-parse", "--git-path", marker)).exists():
+            return operation
+    return None

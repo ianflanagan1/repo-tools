@@ -3,7 +3,7 @@ name = "repo-tools"
 version = "0.1.0"
 description = "Command line tools for repositories: publishing them on GitHub, Packagist and npm, and reporting and fixing the state of every one under a folder."
 requires-python = ">=3.13"
-dependencies = ["cli-kit"]
+dependencies = ["cli-kit", "git-default-branch"]
 
 [project.scripts]
 github = "repo_tools.github.__main__:main"
@@ -15,6 +15,7 @@ repo-fix = "repo_list.fix:main"
 
 [tool.uv.sources]
 cli-kit = { git = "https://github.com/ianflanagan1/cli-kit", branch = "main" }
+git-default-branch = { path = "../git-default-branch", editable = true }
 
 [dependency-groups]
 dev = ["pytest>=8", "ruff>=0.6"]
