@@ -19,6 +19,9 @@ from cli_kit.outcome import Failure, Precondition
 
 BASE_URL = "https://api.bitbucket.org/2.0"
 PAGE = 50  # the most the pull requests endpoint allows; others allow 100
+# characters. Bitbucket documents no limit on a repo's description; this is GitHub's, so a
+# description stays one short line in either.
+DESCRIPTION_MAX_LENGTH = 350
 
 SCOPES = (
     "read:repository:bitbucket",

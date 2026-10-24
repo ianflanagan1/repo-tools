@@ -23,24 +23,24 @@ def repo(tmp_path: Path) -> Path:
 
 def test_fails_for_a_missing_directory(tmp_path: Path):
     with pytest.raises(Precondition, match="No such directory"):
-        publish(tmp_path / "missing", "public", None)
+        publish(tmp_path / "missing", "public", None, model=None)
 
 
 def test_fails_for_a_directory_that_is_not_a_git_repository(tmp_path: Path):
     with pytest.raises(Precondition, match="is not a git repository"):
-        publish(tmp_path, "public", None)
+        publish(tmp_path, "public", None, model=None)
 
 
 def test_fails_when_the_work_tree_has_uncommitted_changes(repo: Path):
     (repo / "new.txt").write_text("x")
     with pytest.raises(Precondition, match="Uncommitted changes"):
-        publish(repo, "public", None)
+        publish(repo, "public", None, model=None)
 
 
 def test_fails_when_head_is_detached(repo: Path):
     git(repo, "checkout", "--detach")
     with pytest.raises(Precondition, match="HEAD is detached"):
-        publish(repo, "public", None)
+        publish(repo, "public", None, model=None)
 
 
 def test_reports_a_failure_on_stderr_with_exit_status_1(tmp_path: Path, capsys):

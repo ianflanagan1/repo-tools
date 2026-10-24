@@ -6,6 +6,8 @@ import re
 from cli_kit.outcome import Failure, Precondition
 from cli_kit.proc import output, run, succeeds
 
+DESCRIPTION_MAX_LENGTH = 350  # characters; GitHub refuses a longer repo description
+
 
 def current_user() -> str:
     """The login of the account gh is logged in as."""

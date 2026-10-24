@@ -8,6 +8,8 @@ import pytest
 from cli_kit import outcome
 from cli_kit.outcome import Done, NothingToDo, Precondition
 
+from repo_list import config
+from repo_list.config import Config
 from repo_tools.github import api
 from repo_tools.github.__main__ import main
 from repo_tools.github.commands import publish as publish_module
@@ -40,6 +42,7 @@ def github(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> GitHub:
     monkeypatch.setattr(api, "exists", lambda repo: repo in github.repos)
     monkeypatch.setattr(api, "visibility", lambda repo: github.repos[repo])
     monkeypatch.setattr(api, "create", create)
+    monkeypatch.setattr(config, "load", lambda: Config())
     outcome.reset()
     return github
 
@@ -63,7 +66,7 @@ def project(tmp_path: Path) -> Path:
 
 
 def test_publishing_a_new_project_creates_the_repo_adds_origin_and_pushes(github, project):
-    result = publish(project, "public", None)
+    result = publish(project, "public", None, model=None)
     assert github.created == [("me/thing", "public", "A thing")]
     assert outcome.changes() == [
         "Created me/thing (public)",
@@ -96,33 +99,102 @@ def test_a_repo_name_after_the_directory_names_the_repo(github, project):
 
 
 def test_publishing_again_has_nothing_to_do(github, project):
-    publish(project, "public", None)
+    publish(project, "public", None, model=None)
     outcome.reset()
-    result = publish(project, "public", None)
+    result = publish(project, "public", None, model=None)
     assert isinstance(result, NothingToDo)
     assert result.summary == "Already published: https://github.com/me/thing"
 
 
 def test_a_new_commit_is_pushed_on_publishing_again(github, project):
-    publish(project, "public", None)
+    publish(project, "public", None, model=None)
     outcome.reset()
     git(project, "commit", "-q", "--allow-empty", "-m", "more")
-    assert isinstance(publish(project, "public", None), Done)
+    assert isinstance(publish(project, "public", None, model=None), Done)
     assert outcome.changes() == ["Pushed main"]
 
 
 def test_an_origin_for_another_repo_stops_it_before_creating_anything(github, project):
     git(project, "remote", "add", "origin", "git@github.com:someone/else.git")
     with pytest.raises(Precondition, match="origin is git@github.com:someone/else.git"):
-        publish(project, "public", None)
+        publish(project, "public", None, model=None)
     assert github.created == []
 
 
 def test_an_existing_repo_with_the_other_visibility_is_left_alone(github, project):
     github.repos["me/thing"] = "private"
     with pytest.raises(Precondition, match="already exists and is private, not public"):
-        publish(project, "public", None)
+        publish(project, "public", None, model=None)
     assert outcome.changes() == []
+
+
+class Model:
+    """Replies with reply, and records each prompt."""
+
+    def __init__(self, reply: str | None) -> None:
+        self.answer = reply
+        self.prompts: list[str] = []
+
+    def reply(self, prompt: str) -> str | None:
+        self.prompts.append(prompt)
+        return self.answer
+
+
+@pytest.fixture
+def undescribed(project: Path) -> Path:
+    """The project, with no description in its manifest."""
+    (project / "composer.json").write_text("{}")
+    (project / "README.md").write_text("# Thing\nSorts socks.\n")
+    git(project, "add", "-A")
+    git(project, "commit", "-qm", "undescribe")
+    return project
+
+
+def test_a_description_in_the_manifest_is_used_without_asking_the_model(github, project):
+    model = Model("Generated.")
+    publish(project, "public", None, model)
+    assert github.created == [("me/thing", "public", "A thing")]
+    assert model.prompts == []
+
+
+def test_without_a_manifest_description_the_model_writes_one(github, undescribed, capsys):
+    model = Model("Sorts socks.")
+    publish(undescribed, "public", None, model)
+    assert github.created == [("me/thing", "public", "Sorts socks.")]
+    [prompt] = model.prompts
+    assert "Repository: thing" in prompt
+    assert "Generated its description: Sorts socks." in capsys.readouterr().out
+
+
+def test_the_model_writes_for_the_repo_name_given(github, undescribed):
+    remote = undescribed.parent / "remote.git"
+    git(undescribed, "config", f"url.{remote}.insteadOf", "git@github.com:me/other.git")
+    model = Model("Sorts socks.")
+    publish(undescribed, "public", "other", model)
+    assert "Repository: other" in model.prompts[0]
+
+
+def test_a_reply_over_githubs_limit_publishes_with_no_description(github, undescribed):
+    publish(undescribed, "public", None, Model("x" * (api.DESCRIPTION_MAX_LENGTH + 1)))
+    assert github.created == [("me/thing", "public", "")]
+
+
+def test_a_model_that_cannot_reply_publishes_with_no_description(github, undescribed):
+    publish(undescribed, "public", None, Model(None))
+    assert github.created == [("me/thing", "public", "")]
+
+
+def test_with_no_model_it_publishes_with_no_description(github, undescribed):
+    publish(undescribed, "public", None, model=None)
+    assert github.created == [("me/thing", "public", "")]
+
+
+def test_the_configured_provider_none_publishes_with_no_description(
+    github, undescribed, monkeypatch
+):
+    monkeypatch.setattr(config, "load", lambda: Config(description_provider=None))
+    assert main(["publish", str(undescribed)]) == 0
+    assert github.created == [("me/thing", "public", "")]
 
 
 @pytest.fixture

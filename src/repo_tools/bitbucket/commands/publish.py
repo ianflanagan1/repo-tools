@@ -14,8 +14,10 @@ re-run after a failure.
 dir defaults to the current directory, and repo-name to the directory's name; the slug is the
 name in lower case. The repo is public unless --private is given, and goes in the workspace's
 default project unless --project names one by its key. Its description comes from the
-project's package manifest when it has one. An existing repo is never edited: if its visibility
-differs from the one asked for, the command stops.
+project's package manifest when it has one; otherwise the provider set as description.provider
+in config.toml writes one from the tracked files (see repo_tools.description), and it's created
+with none when that fails. An existing repo is never edited: if its visibility differs from the
+one asked for, the command stops.
 
 Pipelines runs only on pushes made while it's on, which is why it's turned on before pushing.
 """
@@ -24,10 +26,11 @@ import time
 from pathlib import Path
 
 from cli_kit import cli, outcome
+from cli_kit.models import Model
 from cli_kit.outcome import Done, Failure, NothingToDo, Precondition
 from cli_kit.proc import output, run, succeeds
 
-from repo_tools import clone, manifest
+from repo_tools import clone, description
 from repo_tools.bitbucket import api
 from repo_tools.bitbucket.forge import Bitbucket
 
@@ -56,6 +59,7 @@ def register(subparsers: cli.Subparsers) -> None:
             args.dir,
             private=args.private,
             name=args.name,
+            model=description.configured_model(),
             project=args.project,
             wait_for_ci=not args.no_ci_wait,
         )
@@ -66,6 +70,7 @@ def publish(
     directory: Path,
     private: bool,
     name: str | None,
+    model: Model | None,
     project: str | None = None,
     wait_for_ci: bool = True,
 ) -> Done | NothingToDo:
@@ -98,7 +103,8 @@ def publish(
         if actual != visibility:
             raise Precondition(f"{repo} already exists and is {actual}, not {visibility}.")
     else:
-        client.create(repo, private, manifest.description(directory), project)
+        text = description.for_new_repo(directory, slug, model, api.DESCRIPTION_MAX_LENGTH)
+        client.create(repo, private, text, project)
         outcome.changed(f"Created {repo} ({visibility})")
 
     # 2. Remote

@@ -19,7 +19,7 @@ Command line tools for repositories, in steps that are safe to re-run:
 
 ### `github publish [<dir>] [<repo-name>] [--private] [--no-ci-wait]`
 
-1. Creates the repo under the account `gh` is logged in as, with the description from the project's manifest when it has one: `composer.json`, `package.json`, `Cargo.toml`, `pyproject.toml`, `pom.xml`, `*.csproj` or `*.gemspec`. An existing repo is never edited; if its visibility differs from the one asked for, it stops.
+1. Creates the repo under the account `gh` is logged in as, with the description from the project's manifest when it has one: `composer.json`, `package.json`, `Cargo.toml`, `pyproject.toml`, `pom.xml`, `*.csproj` or `*.gemspec`. Without one, the model of the configured `description.provider` writes it from the tracked files' names and the README, CLAUDE.md, AGENTS.md and manifests among them, and the command prints it. Nothing untracked is read. A reply that isn't one line of at most 350 characters, or no reply, leaves the repo with no description. An existing repo is never edited; if its visibility differs from the one asked for, it stops.
 2. Adds it as the `origin` remote, or checks that `origin` already points at it.
 3. Pushes the current branch and all tags.
 4. Waits for the CI run on the pushed commit, when the repo has a workflow, and prints the failing log on failure. `--no-ci-wait` skips this, such as when publishing many repos at once.
@@ -257,6 +257,7 @@ Setup also copies `config.example.toml` to `config.toml`, if you have none, for 
 | `root` | `~/projects` | where repo-list and repo-fix look when given no folder |
 | `packagist.vendor` | none | whose packages `-p` checks; `-p` without it is a usage error |
 | `bitbucket.workspace` | none | the workspace `bitbucket publish` creates repos in, and a bare repo name is in |
+| `description.provider` | `claude` | who writes a new GitHub or Bitbucket repo's description when its manifest has none: `claude`, through Claude Code signed in as you; `openai`, `gemini` or `mistral`, through their APIs with a key from your credential store, which the first use says how to store; or `none` |
 
 ### GitHub
 

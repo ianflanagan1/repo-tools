@@ -11,8 +11,10 @@ is skipped when already done, so it is safe to re-run after a failure.
 
 dir defaults to the current directory, and repo-name to the directory's name. The repo is public
 unless --private is given. Its description comes from the project's package manifest when it has
-one (see repo_tools.manifest). An existing repo is never edited: if its visibility differs
-from the one asked for, the command stops.
+one (see repo_tools.manifest); otherwise the provider set as description.provider in config.toml
+writes one from the tracked files (see repo_tools.description), and it's created with none when
+that fails. An existing repo is never edited: if its visibility differs from the one asked for,
+the command stops.
 """
 
 import subprocess
@@ -20,10 +22,11 @@ import time
 from pathlib import Path
 
 from cli_kit import cli, outcome
+from cli_kit.models import Model
 from cli_kit.outcome import Done, Failure, NothingToDo, Precondition
 from cli_kit.proc import output, run, succeeds
 
-from repo_tools import clone, manifest
+from repo_tools import clone, description
 from repo_tools.github import api
 
 CI_START_ATTEMPTS = 20
@@ -48,14 +51,20 @@ def register(subparsers: cli.Subparsers) -> None:
             args.dir,
             "private" if args.private else "public",
             args.name,
+            description.configured_model(),
             wait_for_ci=not args.no_ci_wait,
         )
     )
 
 
 def publish(
-    directory: Path, visibility: str, name: str | None, wait_for_ci: bool = True
+    directory: Path,
+    visibility: str,
+    name: str | None,
+    model: Model | None,
+    wait_for_ci: bool = True,
 ) -> Done | NothingToDo:
+    """model writes the description when the manifest has none; None leaves it empty."""
     if not directory.is_dir():
         raise Precondition(f"No such directory: {directory}.")
     directory = directory.resolve()
@@ -69,7 +78,8 @@ def publish(
     if not branch:
         raise Precondition(f"HEAD is detached in {directory}.")
 
-    repo = f"{api.current_user()}/{name or directory.name}"
+    name = name or directory.name
+    repo = f"{api.current_user()}/{name}"
     url = f"https://github.com/{repo}"
     origin = clone.origin_url(directory)
     if origin is not None and api.repo_from_url(origin) != repo:
@@ -81,7 +91,8 @@ def publish(
         if actual != visibility:
             raise Precondition(f"{repo} already exists and is {actual}, not {visibility}.")
     else:
-        api.create(repo, visibility, manifest.description(directory))
+        text = description.for_new_repo(directory, name, model, api.DESCRIPTION_MAX_LENGTH)
+        api.create(repo, visibility, text)
         outcome.changed(f"Created {repo} ({visibility})")
 
     # 2. Remote

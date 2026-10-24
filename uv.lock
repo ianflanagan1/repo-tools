@@ -5,7 +5,7 @@ requires-python = ">=3.13"
 [[package]]
 name = "cli-kit"
 version = "0.1.0"
-source = { git = "https://github.com/ianflanagan1/cli-kit?branch=main#1e2feb298fba2dfe0b3d270ea3b4ac0a672e6196" }
+source = { git = "https://github.com/ianflanagan1/cli-kit?branch=main#38e4658a40adafc0e3c0a50a785b418897ab1b5d" }
 
 [[package]]
 name = "colorama"

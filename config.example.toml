@@ -14,3 +14,9 @@ vendor = "your-vendor"
 # The Bitbucket workspace a repo given by bare name is in, and that `bitbucket publish` creates
 # repos in. Leave it out if you don't use Bitbucket, or always name repos as workspace/name.
 workspace = "your-workspace"
+
+[description]
+# Who writes a new GitHub or Bitbucket repo's description when its manifest has none: claude
+# (through Claude Code, signed in as you), openai, gemini or mistral (through their APIs, with a
+# key from your credential store), or none.
+provider = "claude"
