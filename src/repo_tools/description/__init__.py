@@ -7,7 +7,7 @@ reaches the model. Which model writes it is the small model of the provider set 
 
 from pathlib import Path
 
-from cli_kit import models
+from cli_kit import models, outcome
 from cli_kit.models import Model
 from cli_kit.proc import output
 
@@ -35,7 +35,7 @@ DOCUMENTS = {
 def configured_model() -> Model | None:
     """The small model of the provider set in config.toml, or None when it's none."""
     provider = config.load().description_provider
-    return None if provider is None else models.small(provider)
+    return None if provider is None else models.small(provider, outcome.starting)
 
 
 def for_new_repo(directory: Path, name: str, model: Model | None, max_length: int) -> str:
@@ -63,5 +63,5 @@ def generate(directory: Path, name: str, model: Model, max_length: int) -> str |
     asked = prompt(name, files, documents, max_length)
     if asked is None:
         return None
-    reply = model.reply(asked)
+    reply = model.reply(asked, f"Writing a description for {name}")
     return None if reply is None else description(reply, max_length)

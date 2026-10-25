@@ -29,10 +29,24 @@ def width(text: str) -> int:
     return columns
 
 
-def badges(directory: Directory) -> str:
-    """The directory's badges, a blank for each slot it has none in."""
+def slot_widths(directories: list[Directory]) -> dict[Slot, int]:
+    """How wide each slot's column is: its widest badges among directories, and at least a
+    badge's width but for the package slot, which is left out when no directory has one."""
+    widths = {slot: 0 if slot is Slot.PACKAGE else width(BLANK) for slot in Slot}
+    for directory in directories:
+        for slot, icons in directory.badges.items():
+            widths[slot] = max(widths[slot], width(icons))
+    return widths
+
+
+def badges(directory: Directory, widths: dict[Slot, int]) -> str:
+    """The directory's badges, each slot padded to its width, a blank where it has none."""
     found = directory.badges
-    return " ".join(found.get(slot, BLANK) for slot in Slot)
+    return " ".join(
+        found.get(slot, "") + " " * (columns - width(found.get(slot, "")))
+        for slot, columns in widths.items()
+        if columns
+    )
 
 
 def notes(directory: Directory, colour: Style) -> str:
@@ -52,18 +66,19 @@ def show(root: Path, directories: list[Directory], clean_too: bool = False) -> i
     listed = [f for f in directories if clean_too or f.problems]
     path_width = max((width(str(f.path.relative_to(root))) for f in listed), default=0)
     any_badges = any(f.badges for f in listed)
+    widths = slot_widths(listed)
     notes_width = max((width(notes(f, Style(False))) for f in listed), default=0)
     for directory in listed:
         path = directory.path.relative_to(root)
         mark = colour(RED, "✘") if directory.problems else colour(GREEN, "✔")
         columns = [name(path, colour) + " " * (path_width - width(str(path)))]
-        if any_badges:
-            mark += " " + badges(directory)
         if notes_width:
             plain = notes(directory, Style(False))
             columns.append(notes(directory, colour) + " " * (notes_width - width(plain)))
-        columns.append(colour(YELLOW, "  ".join(p.describe() for p in directory.problems)))
-        print(f"{mark} {'  '.join(columns)}".rstrip())
+        problems = colour(YELLOW, "  ".join(p.describe() for p in directory.problems))
+        columns.append(f"{mark} {problems}")
+        lead = badges(directory, widths) + " " if any_badges else ""
+        print(f"{lead}{'  '.join(columns)}".rstrip())
 
     attention = sum(1 for f in directories if f.problems)
     if listed:

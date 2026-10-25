@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/ianflanagan1/repo-tools/main/schema/ianf-repo-tools.v1.json",
+  "title": ".config/ianf-repo-tools.toml, version 1",
+  "description": "How work reaches the trunk, and whether repo-fix leaves it alone, for repo-list and repo-fix. Each worktree goes by its own copy, as it is on disk; the trunk's integration is the copy committed on the trunk. See repo-tools' README.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "integration"],
+  "properties": {
+    "version": {
+      "description": "The version of this file's format.",
+      "const": 1
+    },
+    "integration": {
+      "description": "How a branch's work reaches the trunk. local: landed on the trunk by hand, and only the trunk pushed. pr-rebase: by pull request, branches rebased onto the trunk. pr-merge: by pull request, the trunk merged into branches.",
+      "enum": ["local", "pr-rebase", "pr-merge"]
+    },
+    "skip-fix": {
+      "description": "Whether repo-fix leaves the worktree alone, while repo-list still reports what needs attention. False when left out.",
+      "type": "boolean",
+      "default": false
+    }
+  }
+}

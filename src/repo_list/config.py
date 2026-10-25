@@ -9,6 +9,7 @@ import argparse
 import sys
 import tomllib
 from dataclasses import dataclass
+from enum import IntEnum
 from pathlib import Path
 from typing import final
 
@@ -106,19 +107,44 @@ def load(path: Path | None = None) -> Config:
     )
 
 
+class Version(IntEnum):
+    """The versions of a repository's .config/ianf-repo-tools.toml repo-tools reads."""
+
+    V1 = 1
+
+
+SCHEMA = (
+    "https://raw.githubusercontent.com/ianflanagan1/repo-tools/main/schema/ianf-repo-tools.v1.json"
+)
+"""The JSON Schema of the version of .config/ianf-repo-tools.toml repo-tools writes."""
+
+
 def integration_in(table: dict, where: str) -> Integration | Invalid | None:
-    """The integration mode table names, None when it names none, or what's wrong with it.
+    """The integration table names, None when it names none, or what's wrong with it.
 
     where says where the setting is, for the message, such as
-    ".workspace.toml: repo-tools.integration". There's no default: a guess would push or
+    ".config/ianf-repo-tools.toml: integration". There's no default: a guess would push or
     rewrite the wrong things.
     """
-    mode = table.get("integration")
-    if mode is None:
+    integration = table.get("integration")
+    if integration is None:
         return None
-    if mode not in set(Integration):
+    if integration not in set(Integration):
         return Invalid(f"{where} must be one of {', '.join(Integration)}")
-    return Integration(mode)
+    return Integration(integration)
+
+
+def skip_fix_in(table: dict, where: str) -> bool | Invalid:
+    """Whether table asks repo-fix to leave the repository alone, false when it doesn't say, or
+    what's wrong with it.
+
+    where says where the setting is, for the message, such as
+    ".config/ianf-repo-tools.toml: skip-fix".
+    """
+    skip_fix = table.get("skip-fix", False)
+    if not isinstance(skip_fix, bool):
+        return Invalid(f"{where} must be true or false")
+    return skip_fix
 
 
 def for_command(parser: argparse.ArgumentParser, packagist: bool, npm: bool) -> Config:

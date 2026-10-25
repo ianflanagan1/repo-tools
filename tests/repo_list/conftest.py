@@ -4,9 +4,10 @@ Every test starts with HOME pointed inside the test's temporary directory, so no
 is read, and an empty `~/projects`, `projects.root`, to be searched. Tests run from outside it.
 Bare remotes go in `projects.remotes`, outside the searched directory. The project's config.toml is
 `projects.config`, naming the Packagist vendor `me` and the npm scope `@me`. Each repository
-made sets its integration mode, local, in a committed .workspace.toml; `projects.integration`
-sets another, or none, for the repositories made after it. Packagist and npm are faked: see
-`packagist` and `npm`.
+made sets its integration, local, in a committed .config/ianf-repo-tools.toml;
+`projects.integration` sets another, or none, for the repositories made after it. Packagist and npm
+are faked: see `packagist` and `npm`. So is the terminal a choice is made on: with no answers
+given to `terminal`, there's none, as when an agent runs the command.
 Plugins can be faked too: see `plugin`.
 """
 
@@ -18,6 +19,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from cli_kit import terminal as cli_terminal
+from cli_kit.colour import Style
 
 import repo_list
 from repo_list import config
@@ -42,14 +45,14 @@ class Projects:
         self.remotes = tmp_path / "remotes"
         self.config = tmp_path / "config.toml"
         self.config.write_text(CONFIG)
-        self.mode: str | None = "local"
+        self.next_integration: str | None = "local"
         self.root.mkdir()
         self.remotes.mkdir()
 
-    def integration(self, mode: str | None) -> None:
-        """Sets the integration mode of the repositories made after this, or with None leaves
+    def integration(self, integration: str | None) -> None:
+        """Sets the integration of the repositories made after this, or with None leaves
         it unset."""
-        self.mode = mode
+        self.next_integration = integration
 
     def worktree(self, repo: Path, name: str, *args: str) -> Path:
         """A linked worktree of repo under the root, added with args, such as --detach or
@@ -79,9 +82,10 @@ class Projects:
         """A repository under the root with one commit and no remote."""
         repo = self.root / name
         git("init", "-q", repo)
-        if self.mode:
-            workspace = f'[repo-tools]\nintegration = "{self.mode}"\n'
-            (repo / ".workspace.toml").write_text(workspace)
+        if self.next_integration:
+            (repo / ".config").mkdir()
+            settings = f'version = 1\nintegration = "{self.next_integration}"\n'
+            (repo / ".config" / "ianf-repo-tools.toml").write_text(settings)
         self.commit(repo, "init")
         return repo
 
@@ -119,6 +123,15 @@ class Projects:
         (repo / "package.json").write_text(json.dumps(manifest))
         git("-C", repo, "add", "-A")
         git("-C", repo, "commit", "-qm", "package.json")
+        git("-C", repo, "push", "-q")
+        return repo
+
+    def python_project(self, name: str, pyproject: str) -> Path:
+        """A pushed repository whose pyproject.toml is pyproject."""
+        repo = self.pushed_repo(name)
+        (repo / "pyproject.toml").write_text(pyproject)
+        git("-C", repo, "add", "-A")
+        git("-C", repo, "commit", "-qm", "pyproject.toml")
         git("-C", repo, "push", "-q")
         return repo
 
@@ -209,6 +222,37 @@ def npm(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Npm:
     npm = Npm(tmp_path / "npm.json")
     monkeypatch.setattr(npm_api, "lacks", npm.lacks)
     return npm
+
+
+class Terminal:
+    """Where repo-list and repo-fix would ask which option to choose. Given answers, it picks the
+    option starting with each in turn; given none, there's no terminal, so nothing is chosen."""
+
+    def __init__(self) -> None:
+        self.answers: list[str] = []
+        self.prompts: list[str] = []
+        self.options: list[str] = []
+        self.colour = False
+        """Whether the terminal is coloured, as when NO_COLOR isn't set."""
+
+    def answer(self, *answers: str) -> None:
+        self.answers.extend(answers)
+
+    def choose(self, prompt: str, options: list[str]) -> int | None:
+        self.prompts.append(prompt)
+        self.options = options
+        if not self.answers:
+            return None
+        answer = self.answers.pop(0)
+        return next(i for i, option in enumerate(options) if option.startswith(answer))
+
+
+@pytest.fixture(autouse=True)
+def terminal(monkeypatch: pytest.MonkeyPatch) -> Terminal:
+    terminal = Terminal()
+    monkeypatch.setattr(cli_terminal, "choose", terminal.choose)
+    monkeypatch.setattr(cli_terminal, "style", lambda: Style(terminal.colour))
+    return terminal
 
 
 @dataclass

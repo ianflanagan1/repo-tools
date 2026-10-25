@@ -1,4 +1,4 @@
-"""Behaviour of the icons repo-list shows after each path: the integration mode, and who can see
+"""Behaviour of the icons repo-list shows after each path: the integration, and who can see
 the remote repository."""
 
 import pytest
@@ -34,50 +34,130 @@ def host(monkeypatch: pytest.MonkeyPatch):
 def test_a_public_repository_shows_the_globe_once_fetched(projects, run, host):
     projects.pushed_repo("a")
     host(Visibility.PUBLIC)
-    assert run("--fetch", "-a").listing == ["✔ 🏠 ❔ 🌐 a  main"]
+    assert run("--fetch", "-a").listing == ["🏠 ❔ 🌐 a  main  ✔"]
 
 
 def test_a_private_repository_shows_the_padlock_once_fetched(projects, run, host):
     projects.pushed_repo("a")
     host(Visibility.PRIVATE)
-    assert run("--fetch", "-a").listing == ["✔ 🏠 ❔ 🔒 a  main"]
+    assert run("--fetch", "-a").listing == ["🏠 ❔ 🔒 a  main  ✔"]
 
 
 def test_without_fetching_the_host_is_not_asked_and_the_slot_is_blank(projects, run, host):
     projects.pushed_repo("a")
     fake = host(Visibility.PUBLIC)
-    assert run("-a").listing == ["✔ 🏠 ❔    a  main"]
+    assert run("-a").listing == ["🏠 ❔    a  main  ✔"]
     assert fake.asked == 0
 
 
 def test_a_host_that_cannot_say_leaves_the_slot_blank(projects, run, host):
     projects.pushed_repo("a")
     host(Unknown("No GitHub token is stored."))
-    assert run("--fetch", "-a").listing == ["✔ 🏠 ❔    a  main"]
+    assert run("--fetch", "-a").listing == ["🏠 ❔    a  main  ✔"]
 
 
-def test_a_linked_worktree_leaves_both_icons_to_its_main_worktree(projects, run, host):
+def test_a_linked_worktree_shows_the_remotes_icons_as_its_main_worktree_does(projects, run, host):
     a = projects.pushed_repo("a")
     projects.worktree(a, "a-wt", "-b", "feature")
     host(Visibility.PUBLIC)
-    assert run("--fetch", "-a").listing == ["✔ 🏠 ❔ 🌐 a     main", "✔          a-wt  feature"]
+    assert run("--fetch", "-a").listing == [
+        "🏠 ❔ 🌐 a     main     ✔",
+        "🏠 ❔ 🌐 a-wt  feature  ✔",
+    ]
 
 
-def test_a_linked_worktree_whose_own_mode_differs_shows_it(projects, run):
+def test_a_linked_worktree_whose_own_integration_differs_shows_it(projects, run):
     a = projects.pushed_repo("a")
     wt = projects.worktree(a, "a-wt", "-b", "feature")
-    (wt / ".workspace.toml").write_text('[repo-tools]\nintegration = "pr-merge"\n')
+    (wt / ".config" / "ianf-repo-tools.toml").write_text('version = 1\nintegration = "pr-merge"\n')
     projects.git("-C", wt, "commit", "-qam", "pr-merge here")
     assert run("-a").listing == [
-        "✔ 🏠 ❔    a     main",
-        "✘ 🔀       a-wt  feature  📤 1 unpushed on feature",
+        "🏠 ❔    a     main     ✔",
+        "🔀 ❔    a-wt  feature  ✘ 📤 1 unpushed on feature",
     ]
 
 
 @pytest.mark.parametrize(
-    ("mode", "icon"), [("local", "🏠"), ("pr-rebase", "📏"), ("pr-merge", "🔀")]
+    ("integration", "icon"), [("local", "🏠"), ("pr-rebase", "📏"), ("pr-merge", "🔀")]
 )
-def test_each_mode_shows_its_icon(projects, run, mode, icon):
-    projects.integration(mode)
+def test_each_integration_shows_its_icon(projects, run, integration, icon):
+    projects.integration(integration)
     projects.pushed_repo("a")
-    assert run("-a").listing == [f"✔ {icon} ❔    a  main"]
+    assert run("-a").listing == [f"{icon} ❔    a  main  ✔"]
+
+
+def test_a_package_shows_its_kind_after_the_visibility(projects, run):
+    projects.package("a")
+    projects.pushed_repo("b")
+    assert run("-a").listing == [
+        "🏠 ❔    🐘 a  main  ✔",
+        "🏠 ❔       b  main  ✔",
+    ]
+
+
+def test_without_a_package_listed_there_is_no_package_column(projects, run):
+    projects.pushed_repo("a")
+    assert run("-a").listing == ["🏠 ❔    a  main  ✔"]
+
+
+def test_a_package_of_another_vendor_still_shows_its_kind(projects, run):
+    projects.package("a", vendor="someone")
+    assert run("-a").listing == ["🏠 ❔    🐘 a  main  ✔"]
+
+
+def test_a_repository_that_is_several_kinds_shows_each_and_widens_the_column(projects, run):
+    a = projects.npm_package("a", {"name": "a"})
+    (a / "copier.yml").write_text("")
+    projects.git("-C", a, "add", "-A")
+    projects.git("-C", a, "commit", "-qm", "copier.yml")
+    projects.git("-C", a, "push", "-q")
+    projects.package("b")
+    assert run("-a").listing == [
+        "🏠 ❔    🔴📋 a  main  ✔",
+        "🏠 ❔    🐘   b  main  ✔",
+    ]
+
+
+def test_a_linked_worktree_shows_its_kind_as_its_main_worktree_does(projects, run):
+    a = projects.package("a")
+    projects.worktree(a, "a-wt", "-b", "feature")
+    assert run("-a").listing == [
+        "🏠 ❔    🐘 a     main     ✔",
+        "🏠 ❔    🐘 a-wt  feature  ✔",
+    ]
+
+
+def test_a_linked_worktree_whose_branch_makes_it_another_kind_shows_it(projects, run):
+    a = projects.package("a")
+    wt = projects.worktree(a, "a-wt", "-b", "feature")
+    (wt / "package.json").write_text('{"name": "a"}')
+    assert run("-a").listing == [
+        "🏠 ❔    🐘   a     main     ✔",
+        "🏠 ❔    🐘🔴 a-wt  feature  ✘ 📝 1 uncommitted file",
+    ]
+
+
+KIT = '[project]\nname = "kit"\n\n[build-system]\nbuild-backend = "uv_build"\n'
+
+
+def uses_kit(source: str) -> str:
+    return (
+        '[project]\nname = "tools"\ndependencies = ["kit"]\n\n'
+        '[build-system]\nbuild-backend = "uv_build"\n\n'
+        f"[tool.uv.sources]\nkit = {source}\n"
+    )
+
+
+def test_a_python_project_another_repository_pins_from_git_is_a_python_package(projects, run):
+    projects.python_project("kit", KIT)
+    projects.python_project("tools", uses_kit('{ git = "https://example.com/kit" }'))
+    assert run("-a").listing == [
+        "🏠 ❔    🐍 kit    main  ✔",
+        "🏠 ❔       tools  main  ✔",
+    ]
+
+
+def test_a_python_project_other_repositories_read_from_a_path_is_no_package(projects, run):
+    projects.python_project("kit", KIT)
+    projects.python_project("tools", uses_kit('{ path = "../kit", editable = true }'))
+    assert run("-a").listing == ["🏠 ❔    kit    main  ✔", "🏠 ❔    tools  main  ✔"]

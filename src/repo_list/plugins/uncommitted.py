@@ -5,16 +5,16 @@ on the same branch or detached HEAD, with the earlier commits untouched. Where w
 request nothing is committed on the trunk: it belongs on a branch.
 """
 
-import json
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import assert_never
+
+from cli_kit.models.agent import Agent, Failed, Finished, TimedOut
 
 from repo_list.git import git, in_progress, run
 from repo_list.plugin import Log, Plugin, Problem, Stage, count
 from repo_list.scan import Directory
 
-CLAUDE = "claude"
 COMMIT_SKILL = "ianf-commit"
 SKILLS = "~/.claude/skills"
 COMMIT_TIMEOUT_SECONDS = 30 * 60
@@ -31,6 +31,10 @@ class UncommittedFiles:
 class Uncommitted(Plugin):
     name = "uncommitted"
     stage = Stage.COMMIT
+
+    def __init__(self, agent: Agent) -> None:
+        """agent: what runs the commit skill, such as Claude Code."""
+        self.agent = agent
 
     def check(self, directory: Directory) -> list[Problem]:
         files = len(git(directory.path, "status", "--porcelain").splitlines())
@@ -55,11 +59,20 @@ class Uncommitted(Plugin):
             return False
 
         start = git(repo, "rev-parse", "-q", "--verify", "HEAD", check=False)
-        try:
-            said = claude_commit(repo, skill)
-        except subprocess.TimeoutExpired:
-            log(False, f"Commit failed: claude took over {COMMIT_TIMEOUT_SECONDS // 60} minutes")
-            return False
+        ended = self.agent.run(
+            f"/{COMMIT_SKILL}",
+            repo,
+            readable(skill),
+            f"Committing with Claude Code's /{COMMIT_SKILL}, which can take a few minutes",
+        )
+        match ended:
+            case Finished(said) | Failed(said):
+                pass
+            case TimedOut(after_seconds):
+                log(False, f"Commit failed: claude took over {after_seconds // 60:.0f} minutes")
+                return False
+            case _:
+                assert_never(ended)
 
         # Judge the run by git's state, not by what claude says: a skill that fails to load
         # still ends as a success, with nothing done.
@@ -87,8 +100,8 @@ class Uncommitted(Plugin):
         return True
 
 
-def claude_commit(repo: Path, skill: Path) -> str:
-    """Runs the commit skill in repo, headless, and returns what claude said.
+def readable(skill: Path) -> list[Path]:
+    """The directories the commit skill must be able to read.
 
     The skill's files may be symlinks to elsewhere, and claude lets the skill read only files
     in its working directories, so every directory they lead to is added.
@@ -96,26 +109,7 @@ def claude_commit(repo: Path, skill: Path) -> str:
     allowed = {skill.resolve()} | {
         p.resolve() if p.is_dir() else p.resolve().parent for p in skill.rglob("*")
     }
-    result = subprocess.run(
-        [
-            CLAUDE,
-            "-p",
-            f"/{COMMIT_SKILL}",
-            *(arg for directory in sorted(allowed) for arg in ("--add-dir", str(directory))),
-            "--output-format",
-            "json",
-            "--no-session-persistence",
-        ],
-        cwd=repo,
-        stdin=subprocess.DEVNULL,
-        capture_output=True,
-        text=True,
-        timeout=COMMIT_TIMEOUT_SECONDS,
-    )
-    try:
-        return str(json.loads(result.stdout)["result"])
-    except (json.JSONDecodeError, KeyError, TypeError):
-        return (result.stdout + result.stderr).strip()
+    return sorted(allowed)
 
 
 def is_ancestor(repo: Path, older: str, newer: str) -> bool:

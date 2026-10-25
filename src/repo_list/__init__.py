@@ -1,27 +1,33 @@
 """Report the state of every git repository under a directory.
 
 Lists each repository under the root that needs attention by its path from the root, with ✘
-and what needs attention; with --all, those with everything committed and pushed too, with ✔:
+and then what needs attention; with --all, those with everything committed and pushed too,
+with ✔ in its place:
 
   📝 uncommitted files            📦 stashes
   📤 commits on no remote         🔌 no remote
   📥 behind the upstream          📁 not a git repository
-  🛬 not landed on the trunk      ⛔ commits on the trunk (PR modes)
+  🛬 not landed on the trunk      ⛔ commits on the trunk (PR integration)
   🔄 HEAD behind its base         ⚡ HEAD conflicts with its base
-  🔃 no pull request (PR modes, with --fetch)
+  🔃 no pull request (PR integration, with --fetch)
   👻 commits on detached HEAD     📡 fetch failed (with --fetch)
   🐘 Packagist (with --packagist) 💥 git failed
-  🟥 npm (with --npm)             🔧 no integration mode, or a wrong one
+  🔴 npm (with --npm)             🔧 no integration, or a wrong one
 
-Between the path and the problems is the branch checked out, or @ and the commit for a detached
-HEAD; the default branch is dimmed. 🤖 marks a directory a Claude Code session is busy in.
-Between the mark and the path are three icons: the integration mode, 🏠 local, 📏 pr-rebase,
+Between the path and the mark is the branch checked out, or @ and the commit for a detached
+HEAD; the trunk is dimmed. 🤖 marks a directory a Claude Code session is busy in, and 💤 one
+whose .config/ianf-repo-tools.toml sets skip-fix = true; repo-fix leaves both alone.
+Before the path are four icons: the integration, 🏠 local, 📏 pr-rebase,
 🔀 pr-merge or 🔧 unset; the host, 🐙 GitHub, 🦊 GitLab, 🧺 Bitbucket, 🗻 Codeberg, 🔷 Azure
-DevOps, ❔ another or 🔌 no remote; and, with --fetch, 🌐 public or 🔒 private. A linked
-worktree leaves them blank, unless its mode differs from its main worktree's.
+DevOps, ❔ another or 🔌 no remote; with --fetch, 🌐 public or 🔒 private; and each kind of
+package it is, 🐘 Composer, 🔴 npm, 🐍 Python, 🧩 Claude Code plugin or 📋 Copier template,
+blank for none; a Python project is a package once another directory pins it from git. Every
+worktree shows its own.
 Each directory reports on its own HEAD, and the main worktree also on every branch no worktree
-has checked out, as the integration mode says. Each repository sets its own, under
-[repo-tools] in its .workspace.toml; there's no default.
+has checked out, as the integration says. Each repository sets its own, in its
+.config/ianf-repo-tools.toml; there's no default. One that sets none is asked for one on the
+terminal, which is set in its copy; skip, or no terminal, leaves it unset, and asks again next
+time.
 A directory that holds files but is in no repository is listed as not a git repository. With
 --packagist, each package of your Packagist vendor's is checked: not on Packagist, Packagist
 lacking a version tag or branch commit that is on origin, or the check failed. A Composer
@@ -36,9 +42,10 @@ Exit status: 0 all clean, 1 something needs attention, 2 usage error.
 
 from pathlib import Path
 
-from cli_kit import cli, devbox
+from cli_kit import cli, devbox, outcome
 
-from repo_list import config, plugins, report, scan
+from repo_list import ask_integration, config, plugins, report, scan
+from repo_tools import packages
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -84,8 +91,11 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     vendor = settings.packagist_vendor if args.packagist else None
     scope = settings.npm_scope if args.npm else None
-    active = plugins.built_in(vendor, scope)
+    # repo-list only checks, so nothing it wires is ever announced.
+    pinned = set().union(*(packages.pinned(d.path) for d in directories))
+    active = plugins.built_in(vendor, scope, pinned, outcome.starting)
     scan.survey(directories, active, fetch_first=args.fetch)
+    ask_integration.ask_unset(directories, root, active)
     return report.show(root, directories, clean_too=args.all)
 
 

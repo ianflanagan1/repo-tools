@@ -76,7 +76,9 @@ def test_several_commits_give_it_the_branch_as_title_and_list_their_subjects():
 # --- Opening one
 
 
-def test_in_pr_modes_a_pushed_branch_without_a_pull_request_gets_a_draft(projects, host, capsys):
+def test_with_pr_integration_a_pushed_branch_without_a_pull_request_gets_a_draft(
+    projects, host, capsys
+):
     projects.integration("pr-merge")
     pushed_feature(projects, "feature work")
     assert progress(capsys) == [
@@ -124,7 +126,7 @@ def test_a_host_that_cannot_say_is_reported_with_why(projects, host, run):
     pushed_feature(projects, "feature work")
     host.has_one = Unknown("No GitHub token is stored.")
     assert run("--fetch").listing == [
-        "✘ 🔀 ❔ 🔒 a  feature  🔃 GitHub couldn't say if feature has a pull request: "
+        "🔀 ❔ 🔒 a  feature  ✘ 🔃 GitHub couldn't say if feature has a pull request: "
         "No GitHub token is stored."
     ]
 
@@ -132,7 +134,7 @@ def test_a_host_that_cannot_say_is_reported_with_why(projects, host, run):
 def test_without_fetching_no_host_is_asked(projects, host, run):
     projects.integration("pr-merge")
     pushed_feature(projects, "feature work")
-    assert run("-a").listing == ["✔ 🔀 ❔    a  feature"]
+    assert run("-a").listing == ["🔀 ❔    a  feature  ✔"]
 
 
 def test_a_branch_with_nothing_for_the_trunk_gets_no_pull_request(projects, host, capsys):
@@ -141,7 +143,7 @@ def test_a_branch_with_nothing_for_the_trunk_gets_no_pull_request(projects, host
     assert progress(capsys) == []
 
 
-def test_in_local_mode_no_pull_request_is_opened(projects, host, capsys):
+def test_with_local_integration_no_pull_request_is_opened(projects, host, capsys):
     a = pushed_feature(projects, "feature work")
     progress(capsys)
     assert host.opened == []

@@ -33,6 +33,10 @@ class GitHub(Plugin):
         command = [GITHUB, "publish", str(directory.path)]
         if not self.wait_for_ci:
             command.append("--no-ci-wait")
+        log.begin(
+            "Publishing with `github publish`"
+            + (", then waiting for CI" if self.wait_for_ci else "")
+        )
         result = subprocess.run(command, capture_output=True, text=True)
         if result.returncode != 0:
             log(False, "Publish failed", *(result.stderr + result.stdout).strip().splitlines())

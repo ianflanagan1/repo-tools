@@ -56,19 +56,23 @@ class Note:
 class Slot(Enum):
     """Where a badge goes in its column, in this order."""
 
-    MODE = "mode"
-    """The integration mode."""
+    INTEGRATION = "integration"
+    """The integration."""
     HOST = "host"
     """Where the remote repository is, such as GitHub, or that there's none."""
     VISIBILITY = "visibility"
     """Who can see the remote repository."""
+    PACKAGE = "package"
+    """Each kind of package the repository is, such as Composer; left out of the listing when no
+    directory in it is one."""
 
 
 @dataclass(frozen=True)
 class Badge:
     """An icon saying what kind of repository a directory is, shown in a column of its own
     between the mark and the path, and explained in the README. Each icon is two columns wide,
-    and from Unicode 11 or earlier, the widths VS Code's terminal knows."""
+    and from Unicode 11 or earlier, the widths VS Code's terminal knows. Badges in the same slot
+    are shown side by side."""
 
     slot: Slot
     icon: str
@@ -80,6 +84,11 @@ class Badge:
 class Log(Protocol):
     def __call__(self, ok: bool, line: str, *details: str) -> None:
         """Shows one thing a fix did, or failed to do, with any details quoted under it."""
+        ...
+
+    def begin(self, line: str) -> None:
+        """Shows that a step that can take a while, such as committing with Claude, is starting,
+        so the wait isn't silent."""
         ...
 
 

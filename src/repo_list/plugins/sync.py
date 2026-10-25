@@ -1,15 +1,16 @@
 """How each branch a directory reports on stands against its upstream and the trunk, and bringing
-them level, as the repository's integration mode says (see repo_list.integration):
+them level, as the repository's integration says (see repo_list.integration):
 
   📤 commits on no remote, pushed         ⛔ commits on the trunk, where work goes by PR
-  📥 behind the upstream, pulled          🛬 commits not landed on the trunk, in local mode
+  📥 behind the upstream, pulled          🛬 commits not landed on the trunk, with local integration
   🔄 HEAD behind its base, caught up      ⚡ HEAD behind its base, conflicting
 
 repo-fix first brings each branch level with its upstream, the trunk first; then catches HEAD up
-with its base by rebase, or in pr-merge mode by merge; then pushes. Nothing is forced, except a
-branch rebased in pr-rebase mode, which is pushed with a lease. A rebase or merge that stops at
-a conflict is undone. Nothing is pushed or pulled in a repository whose fetch failed, as what's
-on its remotes isn't known, and nothing is caught up with a trunk that failed to update.
+with its base by rebase, or with pr-merge integration by merge; then pushes. Nothing is forced,
+except a branch rebased with pr-rebase integration, which is pushed with a lease. A rebase or merge
+that stops at a conflict is undone. Nothing is pushed or pulled in a repository whose fetch
+failed, as what's on its remotes isn't known, and nothing is caught up with a trunk that failed to
+update.
 """
 
 import re
@@ -60,29 +61,29 @@ class Sync(Plugin):
     def check(self, directory: Directory) -> list[Problem]:
         if directory.place is None or directory.place.integration is None:
             return []
-        mode = directory.place.integration
+        integration = directory.place.integration
         facts = gather(directory)
         problems: list[Problem] = [
             problem
             for branch in facts.branches
-            for problem in assess_branch(branch, mode, facts.has_remote)
+            for problem in assess_branch(branch, integration, facts.has_remote)
         ]
         if facts.head:
-            problems.extend(assess_head(facts.head, mode))
+            problems.extend(assess_head(facts.head, integration))
         return problems
 
     def fix(self, directory: Directory, problems: list[Problem], log: Log) -> bool:
         place = directory.place
         if directory.fetch_failed or place is None or place.integration is None:
             return True
-        mode = place.integration
+        integration = place.integration
         facts = gather(directory)
-        for pull in plan_pulls(facts.branches, mode):
+        for pull in plan_pulls(facts.branches, integration):
             if not do_pull(directory, pull, facts.upstreams, log) and pull.branch == place.trunk:
                 directory.trunk_update_failed = True
 
         facts = gather(directory)
-        if facts.head and (action := plan_catch_up(facts.head, mode)):
+        if facts.head and (action := plan_catch_up(facts.head, integration)):
             on_local_trunk = facts.head.base == place.trunk
             if on_local_trunk and (directory.trunk_update_failed or directory.trunk_stale):
                 log(False, f"Not catching up with {place.trunk}: updating it failed")
@@ -90,13 +91,13 @@ class Sync(Plugin):
                 catch_up(directory, action, log)
 
         facts = gather(directory)
-        for push_ in plan_pushes(facts.branches, mode):
+        for push_ in plan_pushes(facts.branches, integration):
             push(directory, push_, facts.upstreams.get(push_.branch, ""), log)
         return True
 
 
 def gather(directory: Directory) -> Facts:
-    """The facts about the directory's branches and HEAD that its integration mode goes by."""
+    """The facts about the directory's branches and HEAD that its integration goes by."""
     place = directory.place
     repo = directory.path
     if place is None:
@@ -143,8 +144,8 @@ def gather(directory: Directory) -> Facts:
 
 
 def _head(directory: Directory, remotes: list[str]) -> Head | None:
-    """How far HEAD is behind the branch it lands on: the trunk in local mode, and the trunk on
-    the remote where work goes by pull request."""
+    """How far HEAD is behind the branch it lands on: the trunk with local integration, and the
+    trunk on the remote where work goes by pull request."""
     place = directory.place
     repo = directory.path
     if place is None or place.trunk is None or place.head == place.trunk:

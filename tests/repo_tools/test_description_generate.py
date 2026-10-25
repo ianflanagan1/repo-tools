@@ -4,7 +4,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from cli_kit import models
+from cli_kit import models, outcome
 from cli_kit.models import Provider
 
 from repo_list import config
@@ -13,14 +13,16 @@ from repo_tools.description import configured_model, for_new_repo, generate
 
 
 class Model:
-    """Replies with reply, and records each prompt."""
+    """Replies with reply, and records each prompt and purpose."""
 
     def __init__(self, reply: str | None) -> None:
         self.answer = reply
         self.prompts: list[str] = []
+        self.purposes: list[str] = []
 
-    def reply(self, prompt: str) -> str | None:
+    def reply(self, prompt: str, purpose: str) -> str | None:
         self.prompts.append(prompt)
+        self.purposes.append(purpose)
         return self.answer
 
 
@@ -97,7 +99,13 @@ def test_a_new_repo_whose_model_gives_nothing_usable_has_none(project, capsys):
 
 def test_the_configured_providers_small_model_writes(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(config, "load", lambda: Config(description_provider=Provider.GEMINI))
-    assert configured_model() == models.small(Provider.GEMINI)
+    assert configured_model() == models.small(Provider.GEMINI, outcome.starting)
+
+
+def test_the_model_is_asked_with_the_purpose_to_announce(project: Path):
+    model = Model("Sorts socks.")
+    generate(project, "thing", model, 350)
+    assert model.purposes == ["Writing a description for thing"]
 
 
 def test_with_no_configured_provider_no_model_writes(monkeypatch: pytest.MonkeyPatch):

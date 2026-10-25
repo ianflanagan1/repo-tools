@@ -1,5 +1,5 @@
 """Behaviour of the integration policy: which branches each directory reports on, what it reports
-about them, and what repo-fix does about it, in each integration mode."""
+about them, and what repo-fix does about it, in each integration."""
 
 from pathlib import Path
 
@@ -26,14 +26,14 @@ from repo_list.integration import (
     assess_head,
     branches_to_check,
     fix_order,
-    mode_icon,
+    integration_icon,
     plan_catch_up,
     plan_pulls,
     plan_pushes,
 )
 
 LOCAL = Integration.LOCAL
-PR_MODES = [Integration.PR_REBASE, Integration.PR_MERGE]
+PR_INTEGRATIONS = [Integration.PR_REBASE, Integration.PR_MERGE]
 
 
 def branch(name: str = "main", **facts) -> Branch:
@@ -95,44 +95,48 @@ def test_the_branch_of_a_worktree_that_no_longer_exists_counts_as_checked_out_by
     assert found == ["main", "feature", "parked", "spike"]
 
 
-# --- What a branch's state amounts to, in each mode
+# --- What a branch's state amounts to, with each integration
 
 
-def test_in_local_mode_the_trunk_reports_commits_to_push_and_to_pull():
+def test_with_local_integration_the_trunk_reports_commits_to_push_and_to_pull():
     assert assess_branch(branch(unpushed=2, behind=1), LOCAL, has_remote=True) == [
         Unpushed("main", 2),
         BehindUpstream("main", 1),
     ]
 
 
-def test_in_local_mode_another_branch_reports_the_work_not_yet_landed_on_the_trunk():
+def test_with_local_integration_another_branch_reports_the_work_not_yet_landed_on_the_trunk():
     found = assess_branch(branch("feature", unpushed=2, unmerged=2), LOCAL, has_remote=True)
     assert found == [Unmerged("feature", 2)]
 
 
-def test_in_local_mode_a_branch_fully_landed_on_the_trunk_needs_nothing():
+def test_with_local_integration_a_branch_fully_landed_on_the_trunk_needs_nothing():
     assert assess_branch(branch("feature", unpushed=0, unmerged=0), LOCAL, True) == []
 
 
-@pytest.mark.parametrize("mode", PR_MODES)
-def test_in_pr_modes_commits_on_the_trunk_belong_on_a_branch(mode):
-    assert assess_branch(branch(unpushed=1), mode, has_remote=True) == [OnTrunk("main", 1)]
+@pytest.mark.parametrize("integration", PR_INTEGRATIONS)
+def test_with_pr_integration_commits_on_the_trunk_belong_on_a_branch(integration):
+    assert assess_branch(branch(unpushed=1), integration, has_remote=True) == [OnTrunk("main", 1)]
 
 
-@pytest.mark.parametrize("mode", PR_MODES)
-def test_in_pr_modes_another_branch_reports_commits_to_push_and_to_pull(mode):
-    found = assess_branch(branch("feature", unpushed=2, behind=1, unmerged=3), mode, True)
+@pytest.mark.parametrize("integration", PR_INTEGRATIONS)
+def test_with_pr_integration_another_branch_reports_commits_to_push_and_to_pull(integration):
+    found = assess_branch(branch("feature", unpushed=2, behind=1, unmerged=3), integration, True)
     assert found == [Unpushed("feature", 2), BehindUpstream("feature", 1)]
 
 
-@pytest.mark.parametrize("mode", [LOCAL, *PR_MODES])
-def test_without_a_remote_nothing_is_unpushed_as_the_missing_remote_is_reported_instead(mode):
-    assert assess_branch(branch(unpushed=2, has_upstream=False), mode, has_remote=False) == []
+@pytest.mark.parametrize("integration", [LOCAL, *PR_INTEGRATIONS])
+def test_without_a_remote_nothing_is_unpushed_as_the_missing_remote_is_reported_instead(
+    integration,
+):
+    assert (
+        assess_branch(branch(unpushed=2, has_upstream=False), integration, has_remote=False) == []
+    )
 
 
-@pytest.mark.parametrize("mode", [LOCAL, *PR_MODES])
-def test_with_the_trunk_unknown_every_branch_reports_commits_to_push_and_to_pull(mode):
-    found = assess_branch(branch("feature", trunk=None, unpushed=1, behind=2), mode, True)
+@pytest.mark.parametrize("integration", [LOCAL, *PR_INTEGRATIONS])
+def test_with_the_trunk_unknown_every_branch_reports_commits_to_push_and_to_pull(integration):
+    found = assess_branch(branch("feature", trunk=None, unpushed=1, behind=2), integration, True)
     assert found == [Unpushed("feature", 1), BehindUpstream("feature", 2)]
 
 
@@ -153,14 +157,14 @@ def test_a_head_level_with_its_base_needs_nothing():
     assert assess_head(head(behind_base=0), LOCAL) == []
 
 
-@pytest.mark.parametrize("mode", PR_MODES)
-def test_in_pr_modes_a_detached_head_is_not_caught_up_as_it_cannot_be_pushed(mode):
-    assert assess_head(head(None, base="origin/main", behind_base=3), mode) == []
+@pytest.mark.parametrize("integration", PR_INTEGRATIONS)
+def test_with_pr_integration_a_detached_head_is_not_caught_up_as_it_cannot_be_pushed(integration):
+    assert assess_head(head(None, base="origin/main", behind_base=3), integration) == []
 
 
-@pytest.mark.parametrize("mode", PR_MODES)
-def test_in_pr_modes_a_branch_is_caught_up_with_the_trunk_on_the_remote(mode):
-    found = assess_head(head(base="origin/main", behind_base=1), mode)
+@pytest.mark.parametrize("integration", PR_INTEGRATIONS)
+def test_with_pr_integration_a_branch_is_caught_up_with_the_trunk_on_the_remote(integration):
+    found = assess_head(head(base="origin/main", behind_base=1), integration)
     assert found == [BehindBase("origin/main", 1)]
 
 
@@ -171,19 +175,19 @@ def test_a_branch_only_behind_its_upstream_is_fast_forwarded():
     assert plan_pulls([branch(behind=2)], LOCAL) == [FastForward("main", here=True)]
 
 
-def test_in_local_mode_a_trunk_checked_out_here_that_has_diverged_is_rebased_on_its_upstream():
+def test_with_local_integration_a_diverged_trunk_checked_out_here_is_rebased_on_its_upstream():
     assert plan_pulls([branch(unpushed=1, behind=2)], LOCAL) == [RebaseOnUpstream("main")]
 
 
-def test_in_local_mode_a_diverged_trunk_checked_out_nowhere_is_left_alone():
+def test_with_local_integration_a_diverged_trunk_checked_out_nowhere_is_left_alone():
     found = plan_pulls([branch(here=False, unpushed=1, behind=2)], LOCAL)
     assert found == [Diverged("main")]
 
 
-@pytest.mark.parametrize("mode", PR_MODES)
-def test_in_pr_modes_a_diverged_branch_is_left_alone(mode):
+@pytest.mark.parametrize("integration", PR_INTEGRATIONS)
+def test_with_pr_integration_a_diverged_branch_is_left_alone(integration):
     found = plan_pulls(
-        [branch(unpushed=1, behind=2), branch("feature", unpushed=1, behind=1)], mode
+        [branch(unpushed=1, behind=2), branch("feature", unpushed=1, behind=1)], integration
     )
     assert found == [Diverged("main"), Diverged("feature")]
 
@@ -195,12 +199,12 @@ def test_a_branch_level_with_its_upstream_is_not_pulled():
 # --- What repo-fix catches up
 
 
-def test_in_local_and_pr_rebase_modes_head_is_rebased_onto_its_base():
+def test_with_local_and_pr_rebase_integration_head_is_rebased_onto_its_base():
     assert plan_catch_up(head(behind_base=2), LOCAL) == CatchUp("main", rebase=True)
     assert plan_catch_up(head(behind_base=2), Integration.PR_REBASE) == CatchUp("main", True)
 
 
-def test_in_pr_merge_mode_the_base_is_merged_into_head():
+def test_with_pr_merge_integration_the_base_is_merged_into_head():
     assert plan_catch_up(head(behind_base=2), Integration.PR_MERGE) == CatchUp("main", False)
 
 
@@ -216,27 +220,27 @@ def test_a_head_level_with_its_base_is_not_caught_up():
 # --- What repo-fix pushes
 
 
-def test_in_local_mode_only_the_trunk_is_pushed():
+def test_with_local_integration_only_the_trunk_is_pushed():
     found = plan_pushes([branch(unpushed=1), branch("feature", unpushed=2, unmerged=2)], LOCAL)
     assert found == [Push("main", force=False)]
 
 
-@pytest.mark.parametrize("mode", PR_MODES)
-def test_in_pr_modes_the_trunk_is_never_pushed(mode):
-    assert plan_pushes([branch(unpushed=1)], mode) == []
+@pytest.mark.parametrize("integration", PR_INTEGRATIONS)
+def test_with_pr_integration_the_trunk_is_never_pushed(integration):
+    assert plan_pushes([branch(unpushed=1)], integration) == []
 
 
-def test_in_pr_merge_mode_a_branch_is_pushed_without_force():
+def test_with_pr_merge_integration_a_branch_is_pushed_without_force():
     found = plan_pushes([branch("feature", unpushed=1)], Integration.PR_MERGE)
     assert found == [Push("feature", force=False)]
 
 
-def test_in_pr_rebase_mode_a_branch_is_pushed_with_a_lease_even_after_its_rebase():
+def test_with_pr_rebase_integration_a_branch_is_pushed_with_a_lease_even_after_its_rebase():
     found = plan_pushes([branch("feature", unpushed=1, behind=2)], Integration.PR_REBASE)
     assert found == [Push("feature", force=True)]
 
 
-def test_a_diverged_branch_is_not_pushed_outside_pr_rebase_mode():
+def test_a_diverged_branch_is_not_pushed_outside_pr_rebase_integration():
     assert plan_pushes([branch(unpushed=1, behind=1)], LOCAL) == []
     assert plan_pushes([branch("feature", unpushed=1, behind=1)], Integration.PR_MERGE) == []
 
@@ -275,18 +279,9 @@ def test_each_repository_keeps_its_place_among_the_others():
     assert order == ["a-wt1", "a", "b", "notes"]
 
 
-# --- The mode's icon
+# --- The integration's icon
 
 
-def test_each_mode_has_its_own_icon_and_an_unset_mode_the_spanner():
-    assert [mode_icon(m, True, m) for m in Integration] == ["🏠", "📏", "🔀"]
-    assert mode_icon(None, True, None) == "🔧"
-
-
-def test_a_linked_worktree_shows_no_mode_icon_when_its_mode_is_its_main_worktrees():
-    assert mode_icon(LOCAL, False, LOCAL) is None
-
-
-def test_a_linked_worktree_shows_its_mode_icon_when_it_differs_from_its_main_worktrees():
-    assert mode_icon(Integration.PR_MERGE, False, LOCAL) == "🔀"
-    assert mode_icon(None, False, LOCAL) == "🔧"
+def test_each_integration_has_its_own_icon_and_an_unset_integration_the_spanner():
+    assert [integration_icon(m) for m in Integration] == ["🏠", "📏", "🔀"]
+    assert integration_icon(None) == "🔧"

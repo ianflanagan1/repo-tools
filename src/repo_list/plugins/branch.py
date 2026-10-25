@@ -2,8 +2,7 @@
 Shown, not fixed, and never needing attention by itself: a detached HEAD's own commits are the
 detached plugin's to report.
 
-The default branch is dimmed, as the expected case, so that any other stands out. It's the one
-git-default-branch tells, as everywhere in repo-tools.
+The trunk is dimmed, as the expected case, so that any other branch stands out.
 """
 
 from dataclasses import dataclass
@@ -19,15 +18,15 @@ class Head:
     """The branch checked out, or None for a detached HEAD."""
     commit: str
     """HEAD's abbreviated commit, or "" before the first commit."""
-    default: str | None
-    """The default branch, or None when it isn't known."""
+    trunk: str | None
+    """The trunk, or None when it isn't known."""
 
 
 def assess(head: Head) -> list[Problem]:
     """How HEAD is shown."""
     if head.branch is None:
         return [Note(f"@{head.commit}", quiet=False)]
-    return [Note(head.branch, quiet=head.branch == head.default)]
+    return [Note(head.branch, quiet=head.branch == head.trunk)]
 
 
 class Branch(Plugin):

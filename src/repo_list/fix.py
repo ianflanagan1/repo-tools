@@ -2,46 +2,54 @@
 
 path is a repository, or a directory to search as repo-list does (default: root in config.toml,
 or ~/projects).
-Every repository is fetched first, once for all of its worktrees. Then each is fixed, a
+Every repository is fetched first, once for all of its worktrees, and one that sets no
+integration is asked for one, as repo-list asks. Then each is fixed, a
 repository's worktrees one after another, the one that updates its trunk first, so the others
-catch up with the trunk as it now is. In each:
+catch up with the trunk as it now is. Repositories go in name order, but each that another pins
+as a dependency, such as from git in its uv.lock or from Packagist in its composer.lock, goes
+before it, and its own pinned dependencies before that; one read from a path doesn't count.
+Repositories that depend on each other are said to, and go in name order. A dependant is fixed
+even when its dependency's fix failed. In each:
 
   📝 uncommitted files   committed by Claude Code's /ianf-commit skill, then checked: the work tree
                          must be clean, on the same branch or detached HEAD, with earlier
-                         commits untouched; never on the trunk in the PR modes
+                         commits untouched; never on the trunk with PR integration
   🔌 no remote           published with `github publish`, public
-  📥 behind              fast-forwarded to the upstream; in local mode, a trunk checked out
+  📥 behind              fast-forwarded to the upstream; with local integration, a trunk checked out
                          here with commits of its own has them rebased onto it
-  🔄 behind its base     rebased onto it, or in pr-merge mode the base merged in
+  🔄 behind its base     rebased onto it, or with pr-merge integration the base merged in
   📤 unpushed            pushed to the upstream, or with no upstream to the only remote
-  🔃 no pull request     opened as a draft, in the PR modes
+  🔃 no pull request     opened as a draft, with PR integration
   📁 not a repository    with --init only: initialised, committed and published
   🐘 Packagist           with --packagist only, for a package of your vendor's, once pushed:
                          `packagist publish`, then `packagist update`, which waits until
                          Packagist has what was pushed
-  🟥 npm                 with --npm only, for a package of your scope's, once pushed: a
+  🔴 npm                 with --npm only, for a package of your scope's, once pushed: a
                          package not on npm is published with `npmjs publish`, which asks for
                          one-time passwords; then `npmjs wait` waits until npm has every
                          version tag, which the package's publish workflow publishes
 
-Nothing is forced, except a branch rebased in pr-rebase mode, pushed with a lease. A branch both
-behind and unpushed has diverged, and is left alone, but for the trunk in local mode; so are
-stashes, and HEAD when catching up would conflict. A rebase or merge that stops at a conflict is
-undone. A repository whose commit fails is left there, one whose fetch failed is neither pushed
-nor pulled, and a directory a Claude Code session is busy in is left alone. Ends with repo-list's
-report of what's left.
+Nothing is forced, except a branch rebased with pr-rebase integration, pushed with a lease. A
+branch both behind and unpushed has diverged, and is left alone, but for the trunk with local
+integration; so are stashes, and HEAD when catching up would conflict. A rebase or merge that
+stops at a conflict is undone. A repository whose commit fails is left there, one whose fetch
+failed is neither pushed nor pulled, and a directory a Claude Code session is busy in is left
+alone, as is one whose .config/ianf-repo-tools.toml sets skip-fix = true. Ends with
+repo-list's report of what's left.
 
 Exit status: 0 all clean, 1 something still needs attention, 2 usage error.
 """
 
+import sys
 from pathlib import Path
 
-from cli_kit import cli, devbox
+from cli_kit import cli, devbox, outcome
 from cli_kit.colour import GREEN, GREY, RED, YELLOW, Style
 
-from repo_list import config, integration, plugins, report, scan
+from repo_list import ask_integration, config, dependencies, integration, plugins, report, scan
 from repo_list.plugin import Plugin, Stage
 from repo_list.scan import ConfigInvalid, Directory
+from repo_tools import packages
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -87,19 +95,35 @@ def main(argv: list[str] | None = None) -> int:
         print(f"No repositories under {root}")
         return 0
 
-    active = plugins.built_in(vendor, scope, init=args.init, wait_for_ci=not args.no_ci_wait)
+    log = Log(Style.for_stream())
+    pinned = {d.path: packages.pinned(d.path) for d in directories}
+    active = plugins.built_in(
+        vendor,
+        scope,
+        set().union(*pinned.values()),
+        log.begin,
+        init=args.init,
+        wait_for_ci=not args.no_ci_wait,
+    )
     scan.survey(directories, active, fetch_first=True)
-    colour = Style.for_stream()
+    ask_integration.ask_unset(directories, root, active)
     fixed_any = False
     changed: set[Path] = set()
-    for directory in in_fix_order(directories):
-        log = Log(directory.path.relative_to(root), colour)
+    order, cycles = in_fix_order(directories, pinned)
+    for cycle in cycles:
+        names = ", ".join(str(d.path.relative_to(root)) for d in cycle)
+        print(f"These depend on each other, so are fixed in name order: {names}")
+    for directory in order:
+        log.enter(directory.path.relative_to(root))
         common = directory.place.common_dir if directory.place else None
         if common in changed:
             # An earlier worktree's fix may have moved the trunk this one catches up with.
             scan.check_all(directory, active)
         if directory.config_error:
             log(False, ConfigInvalid(directory.config_error).describe())
+        elif directory.place and directory.place.skip_fix:
+            if directory.problems:
+                log(False, f"Left alone: skip-fix is set in {scan.SETTINGS}")
         elif directory.place and directory.place.claude_working:
             if directory.problems:
                 log(False, "Left alone: a Claude Code session is working here")
@@ -115,12 +139,17 @@ def main(argv: list[str] | None = None) -> int:
     if fixed_any:
         print()
     scan.survey(directories, active, fetch_first=True)
+    ask_integration.ask_unset(directories, root, active)
     return report.show(root, directories)
 
 
-def in_fix_order(directories: list[Directory]) -> list[Directory]:
-    """The directories in the order to fix them: each repository's worktrees together, the one that
-    updates its trunk first, so the others catch up with the trunk as it now is."""
+def in_fix_order(
+    directories: list[Directory], pinned: dict[Path, set[packages.Name]]
+) -> tuple[list[Directory], list[list[Directory]]]:
+    """The directories in the order to fix them, given what each pins: each repository's worktrees
+    together, the one that updates its trunk first, so the others catch up with the trunk as it now
+    is, and each repository after those it pins. Then the first directory of each set of
+    repositories that pin each other."""
     described = [
         (i, f.place.common_dir, f.place.head, f.place.is_main)
         if f.place
@@ -128,31 +157,63 @@ def in_fix_order(directories: list[Directory]) -> list[Directory]:
         for i, f in enumerate(directories)
     ]
     trunks = {f.place.common_dir: f.place.trunk for f in directories if f.place}
-    return [directories[i] for i in integration.fix_order(described, trunks)]
+    repos: dict[Path, list[Directory]] = {}
+    for i in integration.fix_order(described, trunks):
+        directory = directories[i]
+        repos.setdefault(_repo(directory), []).append(directory)
+    called = {r: set().union(*(packages.names(d.path) for d in ds)) for r, ds in repos.items()}
+    pins = {r: set().union(*(pinned[d.path] for d in ds)) for r, ds in repos.items()}
+    order = dependencies.fix_first(list(repos), dependencies.edges(called, pins))
+    return (
+        [directory for repo in order.keys for directory in repos[repo]],
+        [[repos[repo][0] for repo in cycle] for cycle in order.cycles],
+    )
+
+
+def _repo(directory: Directory) -> Path:
+    """What the directory's worktrees share: its common git directory, or for a directory git
+    can't read, its own path."""
+    return directory.place.common_dir if directory.place else directory.path
 
 
 class Log:
-    """Prints what was done to one directory, under its path, which is printed only if needed.
+    """Prints what was done to each directory in turn, under its path, which is printed only if
+    something is.
 
     On a terminal it is coloured as repo-list colours its report: what failed in yellow, and the
-    details quoted under it in grey.
+    details quoted under it in grey. A step starting is grey too, marked as cli-kit marks one.
+    One Log serves the whole run, so that what's wired once, such as the agent that commits, can
+    announce itself under whichever directory it's working in.
     """
 
-    def __init__(self, path: Path, colour: Style) -> None:
-        self.path = path
+    def __init__(self, colour: Style) -> None:
         self.colour = colour
+        self.path = Path()
+        self.started = False
+
+    def enter(self, path: Path) -> None:
+        """Goes on to the directory at path, from the root."""
+        self.path = path
         self.started = False
 
     def __call__(self, ok: bool, line: str, *details: str) -> None:
         colour = self.colour
-        if not self.started:
-            print(report.name(self.path, colour))
-            self.started = True
+        self._header()
         line += ":" if details else ""
         mark = colour(GREEN, "✔") if ok else colour(RED, "✘")
         print(f"  {mark} {line if ok else colour(YELLOW, line)}")
         for detail in details:
             print(f"    {colour(GREY, detail)}")
+        sys.stdout.flush()
+
+    def begin(self, line: str) -> None:
+        self._header()
+        print(f"  {self.colour(GREY, f'{outcome.STARTING} {line}')}", flush=True)
+
+    def _header(self) -> None:
+        if not self.started:
+            print(report.name(self.path, self.colour))
+            self.started = True
 
 
 def fix(directory: Directory, active: list[Plugin], log: Log) -> None:

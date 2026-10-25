@@ -5,7 +5,6 @@ The check reads the network. It's skipped for a repository whose fetch failed, a
 origin to compare Packagist with isn't known.
 """
 
-import json
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -16,6 +15,8 @@ from cli_kit.outcome import Failure
 from repo_list.git import git
 from repo_list.plugin import Log, Plugin, Problem, Stage
 from repo_list.scan import Directory
+from repo_tools import packages
+from repo_tools.packages import ComposerPackage
 from repo_tools.packagist import api as packagist
 
 PACKAGIST = str(Path(sys.prefix) / "bin" / "packagist")
@@ -82,23 +83,18 @@ class Packagist(Plugin):
 
 
 def package_name(repo: Path, vendor: str) -> str | None:
-    """The name in the repository's composer.json, if it is a package of vendor's. A project,
-    Composer's type for an app, is no package to publish."""
-    try:
-        composer = json.loads((repo / "composer.json").read_text())
-    except (OSError, ValueError):
-        return None
-    if not isinstance(composer, dict) or composer.get("type") == "project":
-        return None
-    name = composer.get("name")
-    if isinstance(name, str) and name.startswith(f"{vendor}/"):
-        return name
+    """The name of the repository's Composer package, if it is one of vendor's."""
+    for package in packages.discover(repo, frozenset()):
+        if isinstance(package, ComposerPackage) and package.name.startswith(f"{vendor}/"):
+            return package.name
     return None
 
 
 def run(command: str, directory: Directory, done: str, log: Log) -> bool:
     """Runs a packagist command on the repository, and logs it if it changed anything. Says
     whether it worked."""
+    waits = ", which waits until Packagist has what was pushed" if command == "update" else ""
+    log.begin(f"Running `packagist {command}`{waits}")
     result = subprocess.run(
         [PACKAGIST, command, str(directory.path)], capture_output=True, text=True
     )

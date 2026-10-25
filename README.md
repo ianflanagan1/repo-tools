@@ -148,77 +148,94 @@ Reports the state of every git repository under a directory, so nothing is left 
 
 ```
 $ repo-list --fetch
-✘ 🏠 🐙 🌐 blog          main  📝 3 uncommitted files  📤 2 unpushed on main
-✘          notes               📁 not a git repository
-✘ 🔀 🔌    work/website  main  🔌 no remote
+🏠 🐙 🌐    blog          main  ✘ 📝 3 uncommitted files  📤 2 unpushed on main
+🏠 🐙 🌐 🐘 lib-php       main  ✘ 📥 1 behind on main
+            notes               ✘ 📁 not a git repository
+🔀 🔌       work/website  main  ✘ 🔌 no remote
 
-✘ 3 of 6 need attention
+✘ 4 of 7 need attention
 ```
 
-Each repository needing attention is listed by its path from the root, in name order, with ✘ and what needs attention. Clean ones are left out unless you ask for them with `-a` (`--all`), when they're listed with ✔:
+Each repository needing attention is listed by its path from the root, in name order, with ✘ and then what needs attention. Clean ones are left out unless you ask for them with `-a` (`--all`), when they're listed with ✔ in its place:
 
 - 📝 **uncommitted files**: changed, staged or untracked
-- 📤 **unpushed on *branch***: commits on a local branch that are on no remote, whether or not the branch has an upstream: on the trunk in local mode, on any other branch in the PR modes (see [Worktrees and integration modes](#worktrees-and-integration-modes))
+- 📤 **unpushed on *branch***: commits on a local branch that are on no remote, whether or not the branch has an upstream: on the trunk with local integration, on any other branch with PR integration (see [Worktrees and integration](#worktrees-and-integration))
 - 📥 **behind on *branch***: commits on the branch's upstream that it lacks, as of the last fetch
-- 🛬 **unmerged on *branch***: in local mode, commits on a branch other than the trunk that aren't on it yet: work still to land
-- ⛔ **commits on *trunk***: in the PR modes, commits made on the trunk, which belong on a branch
+- 🛬 **unmerged on *branch***: with local integration, commits on a branch other than the trunk that aren't on it yet: work still to land
+- ⛔ **commits on *trunk***: with PR integration, commits made on the trunk, which belong on a branch
 - 🔄 **behind *base***: HEAD lacks commits its base has, which repo-fix brings in
 - ⚡ **conflicts with *base***: HEAD is behind its base, and bringing the base's commits in would conflict
-- 🔃 **no pull request for *branch***, or ***host* couldn't say**: in the PR modes, with `--fetch` only, for the branch checked out
+- 🔃 **no pull request for *branch***, or ***host* couldn't say**: with PR integration, with `--fetch` only, for the branch checked out
 - 👻 **commits on detached HEAD**: commits reachable from no branch or remote
 - 📦 **stashes**
 - 🔌 **no remote**
 - 📁 **not a git repository**: a directory that holds files but is in no repository, such as a project not yet initialised
 - 📡 **fetch failed**: with `--fetch` only
 - 💥 **git failed**: git couldn't read the repository
-- 🔧 **Set `integration` in .workspace.toml under [repo-tools]**, or what's wrong with the mode set: shown alone, as nothing else can be judged without it, and repo-fix leaves the repository alone
+- 🔧 **Set `integration` in .config/ianf-repo-tools.toml**, or what's wrong with the integration set: shown alone, as nothing else can be judged without it, and repo-fix leaves the repository alone, unless you choose an integration when asked (see [Worktrees and integration](#worktrees-and-integration))
 - 🐘 **not on Packagist**, **Packagist lacks *versions or branches***, or **Packagist check failed**: with `--packagist` only, for a package of your vendor's (see [Packagist](#packagist))
-- 🟥 **not on npm**, **npm lacks *versions***, or **npm check failed**: with `--npm` only, for a package of your scope's (see [npm](#npm))
+- 🔴 **not on npm**, **npm lacks *versions***, or **npm check failed**: with `--npm` only, for a package of your scope's (see [npm](#npm))
 
-Between the mark and the path, three icons say what kind of repository it is, explained here rather than on every line: its integration mode, the host of its remote, and who can see the remote.
+Before the path, four icons say what kind of repository it is, explained here rather than on every line: its integration, the host of its remote, who can see the remote, and what kind of package it is, if any.
 
-| Mode | | Host | | Visibility | |
-|---|---|---|---|---|---|
-| 🏠 | `local` | 🐙 | GitHub | 🌐 | public |
-| 📏 | `pr-rebase` | 🦊 | GitLab | 🔒 | private |
-| 🔀 | `pr-merge` | 🧺 | Bitbucket | | |
-| 🔧 | none set, or one that doesn't exist | 🗻 | Codeberg | | |
-| | | 🔷 | Azure DevOps | | |
-| | | ❔ | another host, such as your own server, or a path | | |
-| | | 🔌 | no remote | | |
+| Integration | | Host | | Visibility | | Package | |
+|---|---|---|---|---|---|---|---|
+| 🏠 | `local` | 🐙 | GitHub | 🌐 | public | 🐘 | Composer |
+| 📏 | `pr-rebase` | 🦊 | GitLab | 🔒 | private | 🔴 | npm |
+| 🔀 | `pr-merge` | 🧺 | Bitbucket | | | 🐍 | Python |
+| 🔧 | none set, or one that doesn't exist | 🗻 | Codeberg | | | 🧩 | Claude Code plugin |
+| | | 🔷 | Azure DevOps | | | 📋 | Copier template |
+| | | ❔ | another host, such as your own server, or a path | | | | |
+| | | 🔌 | no remote | | | | |
 
-The host is told from the remote's URL. Who can see the remote is asked of GitHub or Bitbucket, so it's shown only with `--fetch`, and left blank for another host or one that can't say. A linked worktree leaves all three blank, as its main worktree shows them, unless its own `.workspace.toml` sets a different mode. Every icon is from Unicode 11 or earlier, the widths VS Code's terminal knows, so the columns line up there.
+The host is told from the remote's URL. Who can see the remote is asked of GitHub or Bitbucket, so it's shown only with `--fetch`, and left blank for another host or one that can't say. Every worktree shows them, linked ones too. Every icon is from Unicode 11 or earlier, the widths VS Code's terminal knows, so the columns line up there.
 
-After the path is what each repository has checked out: its branch, or `@` and the commit for a detached HEAD, such as `@3f2a1c9`. It's shown, never counted as needing attention; commits only a detached HEAD has are reported as 👻. The default branch, as [git-default-branch](../git-default-branch) tells it, is grey, so any other stands out. 🤖 **Claude working** follows it when a Claude Code session is busy there, as recorded by the [worktree-hooks](../../claude/worktree-hooks) plugin; repo-fix then leaves the directory alone.
+The package icon is read from the manifests in the repository's working tree, by each ecosystem's own marker, so an app stays blank by saying so in its manifest, as it already does to stop an accidental publish:
+
+| | Is a package when |
+|---|---|
+| 🐘 | `composer.json` has a `name`, and a `type` other than `project` |
+| 🔴 | `package.json` has a `name`, and isn't `"private": true` |
+| 🐍 | `pyproject.toml` has a `project.name` that another repository under the root pins from git |
+| 🧩 | `.claude-plugin/plugin.json` has a `name` |
+| 📋 | `copier.yml` or `copier.yaml` is there |
+
+Python has no marker that tells a library from a command-line tool, as both have a build backend to be installed. So a Python project is a package once another repository depends on it from a git source, in `[tool.uv.sources]` or as a `git+` URL in the requirement, which its `uv.lock` pins to a commit. One that only path dependencies point at isn't, as its dependants read it as it is on disk.
+
+A repository that is several kinds shows each, side by side, and the column widens to fit; it's left out altogether when no repository listed is a package. Whose package it is doesn't matter here: a package of another vendor's still shows its icon, though only yours are checked against [Packagist](#packagist) and [npm](#npm). Each worktree shows its own, as its branch may make it a different kind. repo-fix reads the same manifests, through `repo_tools.packages`, to decide what to publish.
+
+After the path is what each repository has checked out: its branch, or `@` and the commit for a detached HEAD, such as `@3f2a1c9`. It's shown, never counted as needing attention; commits only a detached HEAD has are reported as 👻. The trunk is grey, so any other branch stands out. 🤖 **Claude working** follows it when a Claude Code session is busy there, as recorded by the [worktree-hooks](../../claude/worktree-hooks) plugin; repo-fix then leaves the directory alone. 💤 **repo-fix skips** follows it when the directory's `.config/ianf-repo-tools.toml` sets `skip-fix = true`, which repo-fix leaves alone too, while repo-list still reports what needs attention; see [Worktrees and integration](#worktrees-and-integration).
 
 The last line totals them, listed or not, for when the list scrolls off the screen: `✘ 3 of 6 need attention`, or `✔ All 6 clean`, which is then the only line.
 
-On a terminal the parent path is grey, the repository's name is bold, the default branch is grey and the problems are yellow. `NO_COLOR=1` turns colour off; `FORCE_COLOR=1` keeps it when piping.
+On a terminal the parent path is grey, the repository's name is bold, the trunk is grey and the problems are yellow. `NO_COLOR=1` turns colour off; `FORCE_COLOR=1` keeps it when piping.
 
 ### How it searches
 
 It assumes repositories are not nested, so it stops descending at each one and never walks into `node_modules`, `vendor` and the like. A directory holding only directories, such as `work/`, is a group and is searched. A directory holding any file (other than `.DS_Store`) is a project, and is reported if it is not a repository. Empty directories, hidden directories and symlinks are skipped.
 
-### Worktrees and integration modes
+### Worktrees and integration
 
 Each directory reports only on its own HEAD, and the main worktree also on every branch no worktree has checked out. So a repository's linked worktrees never repeat what its main worktree says about the branches they share, and each problem is listed where you'd fix it. The trunk is the repository's default branch, as [git-default-branch](../git-default-branch) tells it, never assumed to be `main`.
 
-How a branch's work reaches the trunk is the integration mode, which each repository sets in the `[repo-tools]` table of its committed `.workspace.toml`, so its team shares it:
+How a branch's work reaches the trunk is the integration, which each repository sets in its committed `.config/ianf-repo-tools.toml`, so its team shares it, as [repo-settings](../repo-settings) describes. Each worktree goes by its own copy, as it is on disk, so a branch can change its integration; the trunk's integration is the copy committed on the trunk:
 
 ```toml
-[repo-tools]
+#:schema https://raw.githubusercontent.com/ianflanagan1/repo-tools/main/schema/ianf-repo-tools.v1.json
+version = 1                 # the version of this file's format: see schema/
 integration = "local"
+skip-fix = false            # true: repo-fix leaves this worktree alone; false when left out
 ```
 
-There's no default, and no machine-wide setting, as a wrong guess would push or rewrite the wrong things: a repository that sets none is reported as 🔧 and left alone by repo-fix.
+There's no default, and no machine-wide setting, as a wrong guess would push or rewrite the wrong things. So repo-list and repo-fix ask, on the terminal, for the integration of each worktree whose copy sets none, one at a time once everything's been checked: the arrows pick an integration and Enter chooses it. The integration chosen is set in that worktree's copy, creating it if it's missing and keeping the rest of it as it was, and the worktree is then reported and fixed in that integration; commit the file to share it. Choosing skip, or running with no terminal to ask at, as an agent does, leaves it unset: it's reported as 🔧 and left alone by repo-fix, and asked about again next time. A copy whose integration is wrong isn't asked about, as the file needs fixing by hand.
 
-| Mode | The trunk | Other branches and detached HEADs |
+| Integration | The trunk | Other branches and detached HEADs |
 |---|---|---|
-| `local` | committed on, rebased onto its upstream, pushed | rebased onto the local trunk, never pushed; their work is landed by hand, and reported as 🛬 until it is |
+| `local` | committed on, rebased onto its upstream, pushed | rebased onto the local trunk, never pushed; their work is reported as 🛬 until it's landed on the trunk |
 | `pr-rebase` | only follows its upstream; commits on it are ⛔ | rebased onto the trunk on the remote, pushed with a lease, and given a draft pull request |
 | `pr-merge` | the same | the trunk on the remote merged in, pushed, and given a draft pull request |
 
-In the PR modes a detached HEAD isn't caught up or pushed: it needs a branch first, and its commits are reported as 👻.
+With PR integration a detached HEAD isn't caught up or pushed: it needs a branch first, and its commits are reported as 👻.
 
 ### Packagist
 
@@ -246,38 +263,45 @@ Fixes what repo-list reports, in one repository or in every one under a director
 repo-fix [--init] [--no-ci-wait] [-p|--packagist] [--npm] [<path>]
 ```
 
-`path` is a repository, or a directory to search as repo-list does; it defaults to the configured root, wherever you run it from. Every repository is fetched first, once for all of its worktrees. Then each directory is fixed, a repository's worktrees one after another, the one that updates the trunk first: the one with it checked out, or else the main worktree. So the others catch up with the trunk as it now is, and if updating it fails, nothing is caught up with it. In each:
+`path` is a repository, or a directory to search as repo-list does; it defaults to the configured root, wherever you run it from. Every repository is fetched first, once for all of its worktrees. Then each directory is fixed, a repository's worktrees one after another, the one that updates the trunk first: the one with it checked out, or else the main worktree. So the others catch up with the trunk as it now is, and if updating it fails, nothing is caught up with it.
+
+Repositories go in name order, except that each one another pins as a dependency goes before it, and that one's own pinned dependencies before that, so each is pushed by the time its dependants' turn comes. A dependency is pinned when the dependant's lock file holds it at a version or commit: from a git source for Python; from Packagist or a VCS repository for Composer, though not one `composer.lock` reads from a path; from the registry or git for npm, though not `file:`, `link:`, `workspace:`, `portal:` or a path. One read from a path counts for neither the order nor the 🐍, since its dependants see it as it is on disk. Repositories that depend on each other, directly or through others, are said to, and keep their name order among themselves. A dependant is fixed even when its dependency's fix failed, as its own work may have nothing to do with it.
+
+In each:
 
 | Problem | Fix |
 |---|---|
 | 📝 uncommitted files | Claude Code's `/ianf-commit` skill, run headless (`claude -p /ianf-commit`) |
 | 🔌 no remote | `github publish`, so public and waiting for CI unless `--no-ci-wait` |
-| 📥 behind | fast-forwarded to the upstream, whether the branch is checked out or not; in local mode, a trunk checked out here with commits of its own has them rebased onto the upstream |
-| 🔄 behind its base | rebased onto it, or in `pr-merge` mode the base merged in; one that stops at a conflict is undone |
-| 📤 unpushed | pushed to the upstream, with a lease after a rebase in `pr-rebase` mode; a branch with none is pushed to the only remote and tracks it |
+| 📥 behind | fast-forwarded to the upstream, whether the branch is checked out or not; with local integration, a trunk checked out here with commits of its own has them rebased onto the upstream |
+| 🔄 behind its base | rebased onto it, or with `pr-merge` integration the base merged in; one that stops at a conflict is undone |
+| 📤 unpushed | pushed to the upstream, with a lease after a rebase with `pr-rebase` integration; a branch with none is pushed to the only remote and tracks it |
 | 🔃 no pull request | opened as a draft, through `gh` on GitHub or the API on Bitbucket, whose token then needs `write:pullrequest:bitbucket` |
 | 📁 not a git repository | with `--init` only: `git init`, then committed and published |
 | 🐘 Packagist | with `-p` only, after pushing: `packagist publish`, which also adds a missing webhook, then `packagist update`, which waits until Packagist has what was pushed |
-| 🟥 npm | with `--npm` only, after pushing: for a package not on npm, `npmjs publish`, which needs your terminal for npm's one-time passwords and a version tag at `HEAD`; then `npmjs wait`, which waits until the package's publish workflow has published every version tag |
+| 🔴 npm | with `--npm` only, after pushing: for a package not on npm, `npmjs publish`, which needs your terminal for npm's one-time passwords and a version tag at `HEAD`; then `npmjs wait`, which waits until the package's publish workflow has published every version tag |
 
-Everything but writing the commits is deterministic. The commit step is checked before and after: it doesn't start during a merge, rebase, cherry-pick or revert, or on the trunk in the PR modes, and it counts as done only if the work tree is then clean, on the same branch or detached HEAD, with the earlier commits untouched. It judges by git's state, not by what Claude says, because a skill that fails to load still ends in success with nothing done. If the commit step fails, nothing else happens in that repository.
+Everything but writing the commits is deterministic. The commit step is checked before and after: it doesn't start during a merge, rebase, cherry-pick or revert, or on the trunk with PR integration, and it counts as done only if the work tree is then clean, on the same branch or detached HEAD, with the earlier commits untouched. It judges by git's state, not by what Claude says, because a skill that fails to load still ends in success with nothing done. If the commit step fails, nothing else happens in that repository.
 
-Nothing is forced, except a branch rebased in `pr-rebase` mode, pushed `--force-with-lease --force-if-includes`, which git refuses if its upstream has commits never fetched here. A branch both behind and unpushed has diverged and is left alone, but for the trunk in local mode; so are stashes, and HEAD when catching up would conflict (⚡). A repository whose fetch failed is neither pushed nor pulled. A directory where a Claude Code session is busy is left alone entirely, except by the session running repo-fix itself.
+Nothing is forced, except a branch rebased with `pr-rebase` integration, pushed `--force-with-lease --force-if-includes`, which git refuses if its upstream has commits never fetched here. A branch both behind and unpushed has diverged and is left alone, but for the trunk with local integration; so are stashes, and HEAD when catching up would conflict (⚡). A repository whose fetch failed is neither pushed nor pulled. A directory where a Claude Code session is busy is left alone entirely, except by the session running repo-fix itself.
 
 Each repository it changed is listed with what was done, then it ends with repo-list's report of what's left:
 
 ```
 $ repo-fix
 blog
+  … Committing with Claude Code's /ianf-commit, which can take a few minutes
   ✔ Committed a1b2c3d Add the draft about devbox
   ✔ Pushed main to origin
 work/website
   ✘ Not syncing main: it has diverged from origin/main
 
-✘ work/website  main  📤 1 unpushed on main  📥 2 behind on main
+work/website  main  ✘ 📤 1 unpushed on main  📥 2 behind on main
 
 ✘ 1 of 3 need attention
 ```
+
+A step that can take a while, such as committing with Claude, publishing and waiting for CI, or waiting for Packagist or npm, says so in grey, with `…`, before it starts, so a long wait isn't silent.
 
 On a terminal what was done is coloured as repo-list colours its report, with what failed in yellow and the details under it, such as what Claude said, in grey.
 
@@ -296,7 +320,7 @@ cd ~/projects/cli/repo-tools
 devbox run setup
 ```
 
-That runs `uv sync`, which builds `.venv` with cli-kit (from GitHub) and these tools installed, then links each command into `~/.local/bin`, or `$XDG_BIN_HOME`. It says so if that directory isn't on your PATH, or if another command of the same name comes first. Run it again after moving the checkout.
+That runs `uv sync`, which builds `.venv` with these tools and cli-kit and git-default-branch, from their checkouts beside this one (`../cli-kit`, `../git-default-branch`), installed, then links each command into `~/.local/bin`, or `$XDG_BIN_HOME`. It says so if that directory isn't on your PATH, or if another command of the same name comes first. Run it again after moving the checkout.
 
 The commands in `.venv/bin` are console scripts pointing at the Python devbox pins, so they start without devbox, which is slower and prints its own error line whenever a command fails. cli-kit puts this directory's devbox packages, such as `gh`, first on the PATH for the programs a command runs. After pulling changes, here or in cli-kit, run `devbox run -- uv sync` to bring `.venv` up to date.
 
@@ -420,8 +444,9 @@ src/
 └── repo_list/
     ├── scan.py           finding repositories, where each stands among its worktrees, and
     │                     running the plugins' checks of each
-    ├── integration.py    the integration modes: what each directory reports about its branches,
+    ├── integration.py    the integrations: what each directory reports about its branches,
     │                     what repo-fix does about it, and in what order; pure
+    ├── dependencies.py   the order repo-fix takes repositories in, dependencies first; pure
     ├── agents.py         whether a Claude Code session is busy in a directory
     ├── hosts.py          GitHub and Bitbucket: a repo's visibility, and its pull requests
     ├── plugin.py         what a plugin is, and the stages repo-fix runs fixes in

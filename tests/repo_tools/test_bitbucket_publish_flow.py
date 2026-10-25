@@ -124,14 +124,16 @@ def test_uncommitted_changes_stop_it_before_any_change(bitbucket, project):
 
 
 class Model:
-    """Replies with reply, and records each prompt."""
+    """Replies with reply, and records each prompt and purpose."""
 
     def __init__(self, reply: str | None) -> None:
         self.answer = reply
         self.prompts: list[str] = []
+        self.purposes: list[str] = []
 
-    def reply(self, prompt: str) -> str | None:
+    def reply(self, prompt: str, purpose: str) -> str | None:
         self.prompts.append(prompt)
+        self.purposes.append(purpose)
         return self.answer
 
 

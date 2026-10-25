@@ -1,11 +1,11 @@
 """How work on a repository's branches gets into its trunk, the default branch, and so what each
 directory reports about its branches and what repo-fix does about them.
 
-Three modes, each repository setting its own by `integration` under [repo-tools] in its
-.workspace.toml, with no default:
+Three integrations, each repository setting its own by `integration` in its
+.config/ianf-repo-tools.toml, with no default:
 
-- local: work is landed on the trunk by hand, here, and only the trunk is pushed. Other branches
-  and detached HEADs are rebased onto the local trunk, and report what's still to land.
+- local: work reaches the trunk here, with no pull request, and only the trunk is pushed. Other
+  branches and detached HEADs are rebased onto the local trunk, and report what's still to land.
 - pr-rebase: work reaches the trunk by pull request. The trunk only follows its upstream; a
   branch is rebased onto the trunk on the remote and pushed with a lease.
 - pr-merge: as pr-rebase, but the trunk on the remote is merged into a branch, so nothing is
@@ -27,7 +27,7 @@ from typing import assert_never, final
 from repo_list.plugin import count
 
 UNSET = "🔧"
-"""The mode's icon when none is set, or the one set doesn't exist."""
+"""The integration's icon when none is set, or the one set doesn't exist."""
 
 
 class Integration(StrEnum):
@@ -95,7 +95,8 @@ class Head:
     branch: str | None
     """The branch checked out, or None for a detached HEAD."""
     base: str
-    """What it catches up with: the trunk in local mode, the trunk on the remote otherwise."""
+    """What it catches up with: the trunk with local integration, otherwise the trunk on the
+    remote."""
     behind_base: int
     conflicts: bool
     """Whether bringing the base's commits in would conflict."""
@@ -179,14 +180,16 @@ type BranchProblem = Unpushed | BehindUpstream | OnTrunk | Unmerged
 type HeadProblem = BehindBase | Conflicts
 
 
-def assess_branch(branch: Branch, mode: Integration, has_remote: bool) -> list[BranchProblem]:
+def assess_branch(
+    branch: Branch, integration: Integration, has_remote: bool
+) -> list[BranchProblem]:
     """What needs attention about the branch.
 
     With no remote, nothing is counted as unpushed: the missing remote is reported instead.
     """
     found: list[BranchProblem] = []
     if has_remote and branch.unpushed:
-        match _role(branch, mode):
+        match _role(branch, integration):
             case _Role.PUSHED:
                 found.append(Unpushed(branch.name, branch.unpushed))
             case _Role.PROTECTED_TRUNK:
@@ -197,18 +200,18 @@ def assess_branch(branch: Branch, mode: Integration, has_remote: bool) -> list[B
                 assert_never(role)
     if branch.behind:
         found.append(BehindUpstream(branch.name, branch.behind))
-    if _role(branch, mode) is _Role.LANDED and branch.unmerged:
+    if _role(branch, integration) is _Role.LANDED and branch.unmerged:
         found.append(Unmerged(branch.name, branch.unmerged))
     return found
 
 
-def assess_head(head: Head, mode: Integration) -> list[HeadProblem]:
+def assess_head(head: Head, integration: Integration) -> list[HeadProblem]:
     """What needs attention about how far HEAD is behind its base.
 
     Where work goes by pull request a detached HEAD isn't caught up: it can't be pushed or
     proposed until it's on a branch, which is for you to name.
     """
-    if head.branch is None and mode.by_pull_request:
+    if head.branch is None and integration.by_pull_request:
         return []
     if not head.behind_base:
         return []
@@ -269,12 +272,12 @@ class Push:
 type Pull = FastForward | RebaseOnUpstream | Diverged
 
 
-def plan_pulls(branches: Sequence[Branch], mode: Integration) -> list[Pull]:
+def plan_pulls(branches: Sequence[Branch], integration: Integration) -> list[Pull]:
     """How each branch behind its upstream is brought level with it, in the branches' order.
 
     Nothing is forced. A branch both behind and with commits of its own has diverged, and is
-    left alone, except the trunk checked out here in local mode: its own commits are rebased
-    onto its upstream, as a pull with rebase would.
+    left alone, except the trunk checked out here with local integration: its own commits are
+    rebased onto its upstream, as a pull with rebase would.
     """
     pulls: list[Pull] = []
     for branch in branches:
@@ -282,49 +285,46 @@ def plan_pulls(branches: Sequence[Branch], mode: Integration) -> list[Pull]:
             continue
         if not branch.unpushed:
             pulls.append(FastForward(branch.name, branch.here))
-        elif mode is Integration.LOCAL and branch.trunk and branch.here:
+        elif integration is Integration.LOCAL and branch.trunk and branch.here:
             pulls.append(RebaseOnUpstream(branch.name))
         else:
             pulls.append(Diverged(branch.name))
     return pulls
 
 
-def plan_catch_up(head: Head, mode: Integration) -> CatchUp | WouldConflict | None:
+def plan_catch_up(head: Head, integration: Integration) -> CatchUp | WouldConflict | None:
     """How HEAD catches up with its base, or None when there's nothing to bring in."""
-    match assess_head(head, mode):
+    match assess_head(head, integration):
         case []:
             return None
         case [Conflicts(base)]:
             return WouldConflict(base)
         case _:
-            return CatchUp(head.base, rebase=mode is not Integration.PR_MERGE)
+            return CatchUp(head.base, rebase=integration is not Integration.PR_MERGE)
 
 
-def plan_pushes(branches: Sequence[Branch], mode: Integration) -> list[Push]:
-    """Which branches are pushed, in the branches' order: in local mode only the trunk, and
-    where work goes by pull request every branch but the trunk.
+def plan_pushes(branches: Sequence[Branch], integration: Integration) -> list[Push]:
+    """Which branches are pushed, in the branches' order: with local integration only the trunk,
+    and where work goes by pull request every branch but the trunk.
 
-    A diverged branch is pushed only in pr-rebase mode, with a lease, as its own rebase onto the
-    trunk is what made it diverge; git refuses the push if its upstream has commits that were
-    never fetched here.
+    A diverged branch is pushed only with pr-rebase integration, with a lease, as its own rebase
+    onto the trunk is what made it diverge; git refuses the push if its upstream has commits that
+    were never fetched here.
     """
     pushes: list[Push] = []
     for branch in branches:
-        if not branch.unpushed or _role(branch, mode) is not _Role.PUSHED:
+        if not branch.unpushed or _role(branch, integration) is not _Role.PUSHED:
             continue
-        force = mode is Integration.PR_REBASE and branch.trunk is False
+        force = integration is Integration.PR_REBASE and branch.trunk is False
         if branch.behind and not force:
             continue
         pushes.append(Push(branch.name, force))
     return pushes
 
 
-def mode_icon(mode: Integration | None, is_main: bool, main_mode: Integration | None) -> str | None:
-    """The icon for a worktree's integration mode, or None for a linked worktree whose mode is
-    its main worktree's, which says it already."""
-    if not is_main and mode == main_mode:
-        return None
-    return mode.icon if mode else UNSET
+def integration_icon(integration: Integration | None) -> str:
+    """The icon for a worktree's integration."""
+    return integration.icon if integration else UNSET
 
 
 def branches_to_check(
@@ -376,16 +376,16 @@ class _Role(StrEnum):
     PROTECTED_TRUNK = "protected trunk"
     """The trunk, where work goes by pull request: nothing is committed or pushed on it."""
     LANDED = "landed"
-    """A branch whose work is landed on the trunk here, by hand, and never pushed."""
+    """A branch whose work lands on the trunk here, and is never pushed."""
 
 
-def _role(branch: Branch, mode: Integration) -> _Role:
+def _role(branch: Branch, integration: Integration) -> _Role:
     if branch.trunk is None:
         return _Role.PUSHED
-    match mode:
+    match integration:
         case Integration.LOCAL:
             return _Role.PUSHED if branch.trunk else _Role.LANDED
         case Integration.PR_REBASE | Integration.PR_MERGE:
             return _Role.PROTECTED_TRUNK if branch.trunk else _Role.PUSHED
         case _:
-            assert_never(mode)
+            assert_never(integration)

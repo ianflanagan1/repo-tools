@@ -43,7 +43,7 @@ PULLS = [
 ]
 
 # base..head, newest first.
-FILES = {("trunk", ".workspace.toml"): '[dora]\nproduction = "Production"\n'}
+FILES = {("trunk", ".config/ianf-dora.toml"): 'version = 1\nproduction = "Production"\n'}
 
 COMMITS = [
     Commit("2" * 40, at(19), "Merged in develop (pull request #4)", merge=True),
@@ -251,7 +251,8 @@ def test_names_the_repos_main_branch(host):
 
 def test_reads_a_committed_file_at_a_revision(host):
     assert (
-        host.forge().file(REPO, "trunk", ".workspace.toml") == FILES[("trunk", ".workspace.toml")]
+        host.forge().file(REPO, "trunk", ".config/ianf-dora.toml")
+        == FILES[("trunk", ".config/ianf-dora.toml")]
     )
 
 

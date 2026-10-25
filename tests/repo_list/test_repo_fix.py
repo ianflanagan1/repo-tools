@@ -7,9 +7,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from cli_kit.models import claude_code
 
 from repo_list import fix
-from repo_list.plugins import github, npm, packagist, uncommitted
+from repo_list.plugins import github, npm, packagist
 
 COMMITS = """git add -A && git commit -qm "Fake commit" && echo '{"result": "✅ Committed."}'"""
 DOES_NOTHING = """printf '%s' '{"result": "🛑 Stopped.\\nThe check failed."}'"""
@@ -76,7 +77,7 @@ class Fakes:
         self.npmjs(NPMJS)
 
     def claude(self, action: str) -> None:
-        self.monkeypatch.setattr(uncommitted, "CLAUDE", str(self._script("claude", action)))
+        self.monkeypatch.setattr(claude_code, "CLAUDE", str(self._script("claude", action)))
 
     def github(self, action: str) -> None:
         self.monkeypatch.setattr(github, "GITHUB", str(self._script("github", action)))
@@ -171,7 +172,21 @@ def test_uncommitted_work_is_committed_by_running_the_commit_skill_in_the_reposi
     assert args[:2] == ["-p", "/ianf-commit"]
     assert subjects(a) == ["init", "Fake commit"]
     head = git(a, "rev-parse", "--short", "HEAD")
-    assert result.progress[:2] == ["a", f"  ✔ Committed {head} Fake commit"]
+    assert result.progress[:3] == [
+        "a",
+        "  … Committing with Claude Code's /ianf-commit, which can take a few minutes",
+        f"  ✔ Committed {head} Fake commit",
+    ]
+
+
+def test_each_step_that_can_take_a_while_says_so_before_it_starts(projects, fakes, repo_fix):
+    projects.local_repo("a")
+    result = repo_fix()
+    assert result.progress[:3] == [
+        "a",
+        "  … Publishing with `github publish`, then waiting for CI",
+        "  ✔ Published:",
+    ]
 
 
 def test_the_commit_skill_may_read_the_files_its_symlinks_lead_to(
@@ -214,11 +229,24 @@ def test_a_commit_run_that_commits_nothing_fails_with_what_claude_said(projects,
     result = repo_fix()
     assert result.progress == [
         "a",
+        "  … Committing with Claude Code's /ianf-commit, which can take a few minutes",
         "  ✘ Commit failed:",
         "    🛑 Stopped.",
         "    The check failed.",
     ]
-    assert result.listing == ["✘ 🏠 ❔    a  main  📝 1 uncommitted file"]
+    assert result.listing == ["🏠 ❔    a  main  ✘ 📝 1 uncommitted file"]
+
+
+def test_a_commit_run_whose_claude_cannot_start_fails_with_why(
+    projects, fakes, repo_fix, tmp_path, monkeypatch
+):
+    a = projects.pushed_repo("a")
+    (a / "g").write_text("new\n")
+    monkeypatch.setattr(claude_code, "CLAUDE", str(tmp_path / "missing"))
+    result = repo_fix()
+    assert result.progress[2] == "  ✘ Commit failed:"
+    assert "No such file" in result.progress[3]
+    assert subjects(a) == ["init"]
 
 
 def test_a_commit_run_that_rewrites_earlier_commits_fails_and_pushes_nothing(
@@ -232,6 +260,7 @@ def test_a_commit_run_that_rewrites_earlier_commits_fails_and_pushes_nothing(
     result = repo_fix()
     assert result.progress == [
         "a",
+        "  … Committing with Claude Code's /ianf-commit, which can take a few minutes",
         f"  ✘ Commit failed: it rewrote commits made before it; HEAD was at {start}",
     ]
     assert subjects(projects.origin(a)) == ["init"]
@@ -244,11 +273,15 @@ def test_work_on_a_detached_head_is_committed_there(projects, fakes, repo_fix):
     result = repo_fix()
     assert subjects(a) == ["init", "Fake commit"]
     head = git(a, "rev-parse", "--short", "HEAD")
-    assert result.progress == ["a", f"  ✔ Committed {head} Fake commit"]
-    assert result.listing == [f"✘ 🏠 ❔    a  @{head}  👻 1 commit on detached HEAD"]
+    assert result.progress == [
+        "a",
+        "  … Committing with Claude Code's /ianf-commit, which can take a few minutes",
+        f"  ✔ Committed {head} Fake commit",
+    ]
+    assert result.listing == [f"🏠 ❔    a  @{head}  ✘ 👻 1 commit on detached HEAD"]
 
 
-def test_in_pr_modes_work_on_the_trunk_is_not_committed_as_it_belongs_on_a_branch(
+def test_with_pr_integration_work_on_the_trunk_is_not_committed_as_it_belongs_on_a_branch(
     projects, fakes, repo_fix
 ):
     projects.integration("pr-merge")
@@ -262,7 +295,7 @@ def test_in_pr_modes_work_on_the_trunk_is_not_committed_as_it_belongs_on_a_branc
     ]
 
 
-def test_in_pr_modes_work_on_a_branch_is_committed_and_pushed(projects, fakes, repo_fix):
+def test_with_pr_integration_work_on_a_branch_is_committed_and_pushed(projects, fakes, repo_fix):
     projects.integration("pr-merge")
     a = projects.pushed_repo("a")
     git(a, "checkout", "-qb", "feature")
@@ -302,7 +335,7 @@ def test_unpushed_commits_are_pushed_to_the_branch_upstream(projects, repo_fix):
     assert subjects(projects.origin(a)) == ["init", "local"]
 
 
-def test_in_pr_modes_a_branch_without_an_upstream_is_pushed_to_the_only_remote_and_tracks_it(
+def test_with_pr_integration_a_branch_without_an_upstream_is_pushed_to_the_only_remote(
     projects, repo_fix
 ):
     projects.integration("pr-merge")
@@ -345,7 +378,7 @@ def test_branches_behind_their_upstream_are_fast_forwarded_whether_checked_out_o
     assert (a / "f").read_text() == "init\nahead\n"
 
 
-def test_in_local_mode_a_trunk_that_has_diverged_from_its_upstream_is_rebased_onto_it(
+def test_with_local_integration_a_trunk_that_has_diverged_from_its_upstream_is_rebased_onto_it(
     projects, repo_fix
 ):
     a = projects.pushed_repo("a")
@@ -375,9 +408,7 @@ def test_a_trunk_whose_rebase_onto_its_upstream_conflicts_is_left_as_it_was(proj
     assert git(a, "status", "--porcelain") == ""
 
 
-def test_in_pr_modes_a_branch_that_has_diverged_from_its_upstream_is_neither_pushed_nor_pulled(
-    projects, repo_fix
-):
+def test_with_pr_integration_a_diverged_branch_is_neither_pushed_nor_pulled(projects, repo_fix):
     projects.integration("pr-merge")
     a = projects.pushed_repo("a")
     projects.push_from_elsewhere(a)
@@ -404,7 +435,47 @@ def test_a_repository_whose_fetch_fails_is_neither_pushed_nor_pulled(projects, r
     git(a, "remote", "set-url", "origin", str(projects.remotes / "missing.git"))
     result = repo_fix()
     assert result.progress == []
-    assert result.listing == ["✘ 🏠 ❔    a  main  📤 1 unpushed on main  📡 fetch failed"]
+    assert result.listing == ["🏠 ❔    a  main  ✘ 📤 1 unpushed on main  📡 fetch failed"]
+
+
+# --- Dependencies between repositories
+
+
+def python_project(name: str, *pinned_from_git: str) -> str:
+    sources = "".join(f'{d} = {{ git = "https://example.com/{d}" }}\n' for d in pinned_from_git)
+    return (
+        f'[project]\nname = "{name}"\ndependencies = {list(pinned_from_git)!r}\n\n'
+        f"[tool.uv.sources]\n{sources}"
+    )
+
+
+def test_a_dependency_its_dependant_pins_is_fixed_before_it_and_its_own_dependency_first(
+    projects, repo_fix
+):
+    for name, pinned in [("a", ["kit"]), ("b", []), ("kit", ["base"]), ("base", [])]:
+        repo = projects.python_project(name, python_project(name, *pinned))
+        projects.commit(repo, "local")
+    result = repo_fix()
+    assert [line for line in result.progress if not line.startswith(" ")] == [
+        "base",
+        "kit",
+        "a",
+        "b",
+    ]
+
+
+def test_repositories_that_pin_each_other_are_reported_and_fixed_in_name_order(projects, repo_fix):
+    for name, pinned in [("a", ["b"]), ("b", ["a"])]:
+        repo = projects.python_project(name, python_project(name, *pinned))
+        projects.commit(repo, "local")
+    result = repo_fix()
+    assert result.progress == [
+        "These depend on each other, so are fixed in name order: a, b",
+        "a",
+        "  ✔ Pushed main to origin",
+        "b",
+        "  ✔ Pushed main to origin",
+    ]
 
 
 # --- Worktrees and the trunk
@@ -427,13 +498,13 @@ def test_the_trunk_is_updated_before_a_worktree_is_rebased_onto_it(projects, fak
     assert subjects(wt) == ["init", "ahead", "wt work"]
 
 
-def test_in_local_mode_work_on_another_branch_is_never_pushed(projects, fakes, repo_fix):
+def test_with_local_integration_work_on_another_branch_is_never_pushed(projects, fakes, repo_fix):
     a = projects.pushed_repo("a")
     wt = projects.worktree(a, "a-wt", "-b", "feature")
     projects.commit(wt, "feature work")
     result = repo_fix()
     assert result.progress == []
-    assert result.listing == ["✘ a-wt  feature  🛬 1 unmerged on feature"]
+    assert result.listing == ["🏠 ❔    a-wt  feature  ✘ 🛬 1 unmerged on feature"]
     assert git(projects.origin(a), "branch", "--list", "feature") == ""
 
 
@@ -466,7 +537,7 @@ def test_a_worktree_whose_catching_up_would_conflict_is_left_for_you(projects, f
     ]
 
 
-def test_in_pr_rebase_mode_a_branch_is_rebased_onto_the_remote_trunk_and_pushed_with_a_lease(
+def test_with_pr_rebase_integration_a_branch_is_rebased_on_the_remote_trunk_and_force_pushed(
     projects, fakes, repo_fix
 ):
     projects.integration("pr-rebase")
@@ -487,7 +558,7 @@ def test_in_pr_rebase_mode_a_branch_is_rebased_onto_the_remote_trunk_and_pushed_
     assert subjects(projects.origin(a), "feature") == ["init", "ahead", "feature work"]
 
 
-def test_in_pr_merge_mode_the_remote_trunk_is_merged_into_a_branch_and_pushed(
+def test_with_pr_merge_integration_the_remote_trunk_is_merged_into_a_branch_and_pushed(
     projects, fakes, repo_fix
 ):
     projects.integration("pr-merge")
@@ -511,7 +582,7 @@ def test_in_pr_merge_mode_the_remote_trunk_is_merged_into_a_branch_and_pushed(
 # --- Configuration
 
 
-def test_a_repository_with_no_integration_mode_set_is_left_alone(projects, fakes, repo_fix):
+def test_a_repository_with_no_integration_set_is_left_alone(projects, fakes, repo_fix):
     projects.integration(None)
     a = projects.pushed_repo("a")
     projects.commit(a, "local")
@@ -520,12 +591,24 @@ def test_a_repository_with_no_integration_mode_set_is_left_alone(projects, fakes
     assert fakes.calls("claude") == []
     assert result.progress == [
         "a",
-        "  ✘ 🔧 Set `integration` in .workspace.toml under [repo-tools]",
+        "  ✘ 🔧 Set `integration` in .config/ianf-repo-tools.toml",
     ]
     assert subjects(projects.origin(a)) == ["init"]
 
 
-# --- Claude at work
+def test_a_repository_given_an_integration_when_asked_is_fixed_in_that_integration(
+    projects, fakes, repo_fix, terminal
+):
+    projects.integration(None)
+    a = projects.pushed_repo("a")
+    projects.commit(a, "local")
+    terminal.answer("local")
+    result = repo_fix()
+    assert "  ✔ Pushed main to origin" in result.progress
+    assert "local" in subjects(projects.origin(a))
+
+
+# --- Left alone
 
 
 def test_a_directory_a_claude_code_session_is_busy_in_is_left_alone(projects, fakes, repo_fix):
@@ -548,6 +631,28 @@ def test_the_claude_code_session_running_repo_fix_does_not_stop_it(
     assert subjects(a) == ["init", "Fake commit"]
 
 
+def test_a_repository_whose_settings_file_sets_skip_fix_is_left_alone(projects, fakes, repo_fix):
+    a = projects.pushed_repo("a")
+    (a / ".config" / "ianf-repo-tools.toml").write_text(
+        'version = 1\nintegration = "local"\nskip-fix = true\n'
+    )
+    result = repo_fix()
+    assert fakes.calls("claude") == []
+    assert result.progress == [
+        "a",
+        "  ✘ Left alone: skip-fix is set in .config/ianf-repo-tools.toml",
+    ]
+
+
+def test_a_skip_fix_set_to_false_is_fixed(projects, fakes, repo_fix):
+    a = projects.pushed_repo("a")
+    (a / ".config" / "ianf-repo-tools.toml").write_text(
+        'version = 1\nintegration = "local"\nskip-fix = false\n'
+    )
+    repo_fix()
+    assert subjects(a) == ["init", "Fake commit"]
+
+
 # --- Publishing
 
 
@@ -557,6 +662,7 @@ def test_a_repository_without_a_remote_is_published_with_github_publish(projects
     assert [call[1:] for call in fakes.calls("github")] == [["publish", str(a)]]
     assert result.progress == [
         "a",
+        "  … Publishing with `github publish`, then waiting for CI",
         "  ✔ Published:",
         "    Created me/thing (public)",
         "    https://github.com/me/thing",
@@ -581,11 +687,16 @@ def test_a_failed_publish_is_reported_with_its_output(projects, fakes, repo_fix)
     projects.local_repo("a")
     fakes.github(REFUSES)
     result = repo_fix()
-    assert result.progress == ["a", "  ✘ Publish failed:", "    ⚠️ Not today."]
-    assert result.listing == ["✘ 🏠 🔌    a  main  🔌 no remote"]
+    assert result.progress == [
+        "a",
+        "  … Publishing with `github publish`, then waiting for CI",
+        "  ✘ Publish failed:",
+        "    ⚠️ Not today.",
+    ]
+    assert result.listing == ["🏠 🔌    a  main  ✘ 🔌 no remote"]
 
 
-def test_in_pr_modes_other_branches_are_pushed_once_the_repository_is_published(
+def test_with_pr_integration_other_branches_are_pushed_once_the_repository_is_published(
     projects, fakes, repo_fix
 ):
     projects.integration("pr-merge")
@@ -607,10 +718,12 @@ def test_a_package_not_on_packagist_is_published_there(projects, fakes, repo_fix
     result = repo_fix("-p")
     assert result.progress == [
         "a",
+        "  … Running `packagist publish`",
         "  ✔ Published on Packagist:",
         "    Submitted me/a",
         "    Added the Packagist webhook",
         "    https://packagist.org/packages/me/a",
+        "  … Running `packagist update`, which waits until Packagist has what was pushed",
     ]
     assert [call[1:] for call in fakes.calls("packagist")] == [
         ["publish", str(a)],
@@ -627,6 +740,8 @@ def test_a_package_packagist_lacks_versions_of_is_updated_there(
     result = repo_fix("-p")
     assert result.progress == [
         "a",
+        "  … Running `packagist publish`",
+        "  … Running `packagist update`, which waits until Packagist has what was pushed",
         "  ✔ Updated on Packagist:",
         "    Asked Packagist to update me/a",
         "    https://packagist.org/packages/me/a",
@@ -649,16 +764,24 @@ def test_packagist_is_checked_after_pushing_so_it_is_compared_with_what_was_push
     projects.commit(a, "local")
     result = repo_fix("-p")
     assert result.progress[:2] == ["a", "  ✔ Pushed main to origin"]
-    assert result.progress[2] == "  ✔ Published on Packagist:"
+    assert result.progress[2:4] == [
+        "  … Running `packagist publish`",
+        "  ✔ Published on Packagist:",
+    ]
 
 
 def test_a_failed_packagist_publish_is_reported_and_no_update_is_tried(projects, fakes, repo_fix):
     a = projects.package("a")
     fakes.packagist(REFUSES)
     result = repo_fix("-p")
-    assert result.progress == ["a", "  ✘ Packagist publish failed:", "    ⚠️ Not today."]
+    assert result.progress == [
+        "a",
+        "  … Running `packagist publish`",
+        "  ✘ Packagist publish failed:",
+        "    ⚠️ Not today.",
+    ]
     assert [call[1:] for call in fakes.calls("packagist")] == [["publish", str(a)]]
-    assert (result.listing, result.status) == (["✘ 🏠 ❔    a  main  🐘 not on Packagist"], 1)
+    assert (result.listing, result.status) == (["🏠 ❔    🐘 a  main  ✘ 🐘 not on Packagist"], 1)
 
 
 def test_without_the_packagist_flag_packagist_is_left_alone(projects, fakes, repo_fix):
@@ -674,7 +797,12 @@ def test_without_the_packagist_flag_packagist_is_left_alone(projects, fakes, rep
 def test_a_package_not_on_npm_is_published_there_and_waited_for(projects, fakes, repo_fix):
     a = projects.npm_package("a", {"name": "@me/a"})
     result = repo_fix("--npm")
-    assert result.progress == ["a", "  ✔ Published on npm"]
+    assert result.progress == [
+        "a",
+        "  … Running `npmjs publish`, which asks here for npm's one-time passwords",
+        "  ✔ Published on npm",
+        "  … Running `npmjs wait`, which waits until npm has every version tag",
+    ]
     assert [call[1:] for call in fakes.calls("npmjs")] == [
         ["publish", str(a)],
         ["wait", str(a)],
@@ -688,6 +816,7 @@ def test_the_version_tags_npm_lacks_are_waited_for(projects, npm, fakes, repo_fi
     result = repo_fix("--npm")
     assert result.progress == [
         "a",
+        "  … Running `npmjs wait`, which waits until npm has every version tag",
         "  ✔ npm published v0.2.0:",
         "    https://www.npmjs.com/package/@me/a",
     ]
@@ -707,9 +836,13 @@ def test_a_failed_npm_publish_is_reported_and_nothing_is_waited_for(projects, fa
     a = projects.npm_package("a", {"name": "@me/a"})
     fakes.npmjs(REFUSES)
     result = repo_fix("--npm")
-    assert result.progress == ["a", "  ✘ npm publish failed"]
+    assert result.progress == [
+        "a",
+        "  … Running `npmjs publish`, which asks here for npm's one-time passwords",
+        "  ✘ npm publish failed",
+    ]
     assert [call[1:] for call in fakes.calls("npmjs")] == [["publish", str(a)]]
-    assert (result.listing, result.status) == (["✘ 🏠 ❔    a  main  🟥 not on npm"], 1)
+    assert (result.listing, result.status) == (["🏠 ❔    🔴 a  main  ✘ 🔴 not on npm"], 1)
 
 
 def test_a_failed_wait_is_reported_with_what_npmjs_said(projects, npm, fakes, repo_fix):
@@ -717,7 +850,12 @@ def test_a_failed_wait_is_reported_with_what_npmjs_said(projects, npm, fakes, re
     npm.has("@me/a", lacking=["v0.2.0"])
     fakes.npmjs(REFUSES)
     result = repo_fix("--npm")
-    assert result.progress == ["a", "  ✘ npm wait failed:", "    ⚠️ Not today."]
+    assert result.progress == [
+        "a",
+        "  … Running `npmjs wait`, which waits until npm has every version tag",
+        "  ✘ npm wait failed:",
+        "    ⚠️ Not today.",
+    ]
 
 
 def test_without_the_npm_flag_npm_is_left_alone(projects, fakes, repo_fix):
@@ -735,7 +873,7 @@ def test_a_directory_of_files_is_left_alone_by_default(projects, fakes, repo_fix
     (projects.root / "notes" / "todo").write_text("x\n")
     result = repo_fix()
     assert result.progress == []
-    assert result.listing == ["✘ notes  📁 not a git repository"]
+    assert result.listing == ["notes  ✘ 📁 not a git repository"]
     assert fakes.calls("claude") == fakes.calls("github") == []
 
 
@@ -747,7 +885,7 @@ def test_the_init_flag_makes_a_directory_of_files_a_published_repository(project
     assert result.progress[:2] == ["notes", "  ✔ Initialised a git repository"]
     assert subjects(fakes.remote) == ["Fake commit"]
     assert result.listing == [
-        "✘ 🔧 ❔    notes  main  🔧 Set `integration` in .workspace.toml under [repo-tools]"
+        "🔧 ❔    notes  main  ✘ 🔧 Set `integration` in .config/ianf-repo-tools.toml"
     ]
 
 
@@ -763,7 +901,7 @@ def test_stashes_and_commits_on_a_detached_head_are_left_for_you(projects, fakes
     result = repo_fix()
     assert result.progress == []
     assert result.listing == [
-        f"✘ 🏠 ❔    a  @{projects.short_head(a)}  👻 1 commit on detached HEAD  📦 1 stash"
+        f"🏠 ❔    a  @{projects.short_head(a)}  ✘ 👻 1 commit on detached HEAD  📦 1 stash"
     ]
     assert result.status == 1
 
@@ -835,6 +973,8 @@ def test_on_a_terminal_the_path_marks_failures_and_details_are_coloured_as_repo_
     head = git(a, "rev-parse", "--short", "HEAD")
     assert result.progress == [
         "\x1b[38;5;246mgroup/\x1b[0m\x1b[1ma\x1b[0m",
+        "  \x1b[38;5;246m… Committing with Claude Code's /ianf-commit, which can take a few minutes"
+        "\x1b[0m",
         f"  \x1b[32m✔\x1b[0m Committed {head} Fake commit",
         "  \x1b[31m✘\x1b[0m \x1b[33mCommit left work uncommitted:\x1b[0m",
         "    \x1b[38;5;246mKept g out.\x1b[0m",
@@ -850,6 +990,7 @@ def test_no_color_turns_colour_off_even_when_forced(projects, fakes, repo_fix, m
     fakes.claude(LEAVES_A_FILE)
     assert repo_fix().progress == [
         "a",
+        "  … Committing with Claude Code's /ianf-commit, which can take a few minutes",
         f"  ✔ Committed {git(a, 'rev-parse', '--short', 'HEAD')} Fake commit",
         "  ✘ Commit left work uncommitted:",
         "    Kept g out.",

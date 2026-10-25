@@ -1,5 +1,5 @@
-"""Badges in the main worktree for its remote: its host, such as 🐙 GitHub, or 🔌 none; and who
-can see it, 🌐 public or 🔒 private. Linked worktrees share the remote, so they leave both blank.
+"""Badges for a repository's remote: its host, such as 🐙 GitHub, or 🔌 none; and who can see it,
+🌐 public or 🔒 private. Every worktree shows them, though they share the remote.
 
 The host is told by the remote's URL. Who can see it is asked of the host, so only when the
 remotes were fetched in this run: repo-list with --fetch, and repo-fix. A host repo-tools has no
@@ -38,7 +38,7 @@ class Remote(Plugin):
 
     def check(self, directory: Directory) -> list[Problem]:
         place = directory.place
-        if place is None or not place.is_main:
+        if place is None:
             return []
         repo = directory.path
         remotes = git(repo, "remote").splitlines()
