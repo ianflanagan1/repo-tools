@@ -2,11 +2,21 @@
 
 import json
 import re
+from dataclasses import dataclass
 
 from cli_kit.outcome import Failure, Precondition
 from cli_kit.proc import output, run, succeeds
 
 DESCRIPTION_MAX_LENGTH = 350  # characters; GitHub refuses a longer repo description
+
+
+@dataclass(frozen=True)
+class Details:
+    """What `github view` shows of a repo. visibility is public, private or internal."""
+
+    description: str
+    visibility: str
+    topics: tuple[str, ...]
 
 
 def current_user() -> str:
@@ -27,6 +37,31 @@ def visibility(repo: str) -> str:
     """public, private or internal."""
     jq = ".visibility | ascii_downcase"
     return output("gh", "repo", "view", repo, "--json", "visibility", "--jq", jq)
+
+
+def details(repo: str) -> Details:
+    fields = "description,visibility,repositoryTopics"
+    return parse_details(output("gh", "repo", "view", repo, "--json", fields))
+
+
+def parse_details(text: str) -> Details:
+    """Details from gh's JSON, which gives no topics as null and visibility in capitals."""
+    fields = json.loads(text)
+    return Details(
+        fields["description"] or "",
+        fields["visibility"].lower(),
+        tuple(topic["name"] for topic in fields["repositoryTopics"] or ()),
+    )
+
+
+def edit(repo: str, description: str | None, add_topics: tuple[str, ...]) -> None:
+    """Sets the description, unless it's None, and adds the topics. Nothing else is changed."""
+    command = ["gh", "repo", "edit", repo]
+    if description is not None:
+        command += ["--description", description]
+    for topic in add_topics:
+        command += ["--add-topic", topic]
+    output(*command)
 
 
 def create(repo: str, visibility: str, description: str) -> None:

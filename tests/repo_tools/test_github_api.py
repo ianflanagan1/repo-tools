@@ -30,3 +30,18 @@ def test_keeps_a_full_name_as_it_is():
 def test_gives_a_bare_name_the_current_users_login(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(api, "current_user", lambda: "me")
     assert api.full_name("thing") == "me/thing"
+
+
+def test_reads_a_repos_details_from_ghs_json():
+    text = (
+        '{"description": "A skill.", "visibility": "PRIVATE",'
+        ' "repositoryTopics": [{"name": "claude-code"}, {"name": "claude-skills"}]}'
+    )
+    assert api.parse_details(text) == api.Details(
+        "A skill.", "private", ("claude-code", "claude-skills")
+    )
+
+
+def test_reads_a_repo_with_no_topics_or_description_from_ghs_json():
+    text = '{"description": "", "visibility": "PUBLIC", "repositoryTopics": null}'
+    assert api.parse_details(text) == api.Details("", "public", ())

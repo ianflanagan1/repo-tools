@@ -44,6 +44,14 @@ Choosing the level is yours: `patch` for fixes, `minor` for new features, `major
 
 GitHub redirects the old name to the new one, for git, web links and the API, until you or someone else creates a repo with the old name. Packagist, though, matches the webhook's pushes to a package by its stored repository URL, which is why step 3 exists. Each step is skipped when it's already done. The local directory keeps its name; rename it yourself if you want.
 
+### `github view <repo>`
+
+Prints a repo's visibility, description and topics as one JSON object, then a status line, so `grep '^{'` keeps only the data. `repo` is `owner/name`, or a name owned by you. It changes nothing.
+
+### `github edit <repo> [--description <text>] [--add-topic <topic>]...`
+
+Sets a repo's description and adds topics, repeating `--add-topic` for each. `repo` is `owner/name`, or a name owned by you. Only what differs is sent, and nothing is done when the repo already matches. It deliberately can't change anything else, such as visibility or the name, so it can be allowed where `gh repo edit` is denied.
+
 ### `github archive <repo>`
 
 Archives a repo, making it read-only. `repo` is `owner/name`, or a name owned by you. Skipped when it's already archived. It uses `gh`'s everyday login, since archiving needs no extra scope and you can undo it in the repo's settings.
