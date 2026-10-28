@@ -17,6 +17,7 @@ class Services:
     def __init__(self) -> None:
         self.visibility = "public"
         self.user: str | None = "me"
+        self.two_factor = True
         self.versions: frozenset[str] | None = None
         self.published: list[tuple[str, str]] = []
         self.configs: list[dict] = []
@@ -35,6 +36,7 @@ def services(monkeypatch: pytest.MonkeyPatch) -> Services:
     monkeypatch.setattr(clone, "origin_url", lambda directory: "git@github.com:me/thing.git")
     monkeypatch.setattr(github, "visibility", lambda repo: services.visibility)
     monkeypatch.setattr(npm, "logged_in_as", lambda directory: services.user)
+    monkeypatch.setattr(npm, "has_two_factor", lambda directory: services.two_factor)
     monkeypatch.setattr(npm, "versions", lambda package: services.versions)
     monkeypatch.setattr(npm, "publish", services.publish)
     monkeypatch.setattr(npm, "trusts", lambda directory, package: services.configs)
@@ -167,3 +169,15 @@ def test_publishing_when_not_logged_in_to_npm_is_refused(services, package):
     with pytest.raises(Precondition, match="Not logged in to npm") as problem:
         publish(package)
     assert problem.value.details == (f"Run `devbox run -- npm login` in {package}.",)
+
+
+def test_an_npm_account_without_two_factor_authentication_is_refused(services, package):
+    services.two_factor = False
+    with pytest.raises(Precondition, match="Two-factor authentication is off") as problem:
+        publish(package)
+    assert problem.value.details == (
+        "npm needs it to publish and to trust a workflow.",
+        "Turn it on for authorization and writes at https://www.npmjs.com/settings/me/tfa,",
+        "then run `npmjs publish` again.",
+    )
+    assert services.published == []

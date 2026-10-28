@@ -56,6 +56,13 @@ def logged_in_as(directory: Path) -> str | None:
     return result.stdout.strip() or None if result.returncode == 0 else None
 
 
+def has_two_factor(directory: Path) -> bool:
+    """Whether the npm account logged in for the directory's devbox has two-factor
+    authentication on, which npm needs to publish and to trust a workflow."""
+    profile = json.loads(output(*_npm(directory), "profile", "get", "--json"))
+    return bool(profile.get("tfa")) if isinstance(profile, dict) else False
+
+
 def publish(directory: Path, version: str) -> None:
     """Publishes the package in directory, as version, from this machine; npm asks for a
     one-time password. package.json is given the version for the publish and put back after."""

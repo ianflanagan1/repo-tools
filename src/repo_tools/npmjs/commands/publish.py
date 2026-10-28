@@ -61,9 +61,17 @@ def publish(directory: Path) -> Done | NothingToDo:
     visibility = github.visibility(repo)
     if visibility != "public":
         raise Precondition(f"{repo} is {visibility}; npm provenance needs a public repo.")
-    if npm.logged_in_as(directory) is None:
+    user = npm.logged_in_as(directory)
+    if user is None:
         raise Precondition(
             "Not logged in to npm.", f"Run `devbox run -- npm login` in {directory}."
+        )
+    if not npm.has_two_factor(directory):
+        raise Precondition(
+            "Two-factor authentication is off for your npm account.",
+            "npm needs it to publish and to trust a workflow.",
+            f"Turn it on for authorization and writes at https://www.npmjs.com/settings/{user}/tfa,",
+            "then run `npmjs publish` again.",
         )
 
     published = npm.versions(package)
