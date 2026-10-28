@@ -14,7 +14,7 @@ import urllib.request
 from pathlib import Path
 
 from cli_kit.outcome import Failure
-from cli_kit.proc import output, run
+from cli_kit.proc import output
 
 from repo_tools import versions as version_tags
 
@@ -64,7 +64,8 @@ def publish(directory: Path, version: str) -> None:
     stamped = json.loads(original) | {"version": version}
     manifest.write_text(json.dumps(stamped, indent=2, ensure_ascii=False) + "\n")
     try:
-        run(*_npm(directory), "publish", "--access", "public")
+        if subprocess.run([*_npm(directory), "publish", "--access", "public"]).returncode != 0:
+            raise Failure("npm publish failed.", "npm's error is above.")
     finally:
         manifest.write_text(original)
 
@@ -82,7 +83,7 @@ def trusts(directory: Path, package: str) -> list[dict]:
 def trust(directory: Path, package: str, repo: str) -> None:
     """Trusts the repo's publish workflow to publish the package. npm asks for a one-time
     password."""
-    run(
+    command = [
         *_npm(directory),
         "trust",
         "github",
@@ -93,7 +94,9 @@ def trust(directory: Path, package: str, repo: str) -> None:
         repo,
         "--allow-publish",
         "--yes",
-    )
+    ]
+    if subprocess.run(command).returncode != 0:
+        raise Failure("npm trust failed.", "npm's error is above.")
 
 
 def parse_trusts(printed: str) -> list[dict]:
