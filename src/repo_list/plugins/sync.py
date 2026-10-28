@@ -27,6 +27,7 @@ from repo_list.integration import (
     Diverged,
     FastForward,
     Head,
+    Integration,
     Pull,
     Push,
     RebaseOnUpstream,
@@ -90,10 +91,15 @@ class Sync(Plugin):
             else:
                 catch_up(directory, action, log)
 
-        facts = gather(directory)
-        for push_ in plan_pushes(facts.branches, integration):
-            push(directory, push_, facts.upstreams.get(push_.branch, ""), log)
+        push_all(directory, integration, log)
         return True
+
+
+def push_all(directory: Directory, integration: Integration, log: Log) -> None:
+    """Pushes each branch the integration says to push."""
+    facts = gather(directory)
+    for push_ in plan_pushes(facts.branches, integration):
+        push(directory, push_, facts.upstreams.get(push_.branch, ""), log)
 
 
 def gather(directory: Directory) -> Facts:
