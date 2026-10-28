@@ -1,7 +1,8 @@
-"""Behaviour of repo-fix, with claude, github, packagist and npmjs replaced by scripts that
+"""Behaviour of repo-fix, with claude, github, packagist, npmjs and devbox replaced by scripts that
 record their calls."""
 
 import json
+import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,7 +11,7 @@ import pytest
 from cli_kit.models import claude_code
 
 from repo_list import fix
-from repo_list.plugins import github, npm, packagist
+from repo_list.plugins import github, lock, npm, packagist
 
 COMMITS = """git add -A && git commit -qm "Fake commit" && echo '{"result": "✅ Committed."}'"""
 DOES_NOTHING = """printf '%s' '{"result": "🛑 Stopped.\\nThe check failed."}'"""
@@ -60,9 +61,30 @@ else:
 json.dump(lacking, open(os.environ["NPM_STATE"], "w"))
 EOF"""
 
+# The fake devbox runs a fake uv, whose uv.lock is JSON: the git source of each locked package, and
+# the commit it's locked at. An upgrade locks each at its source's HEAD.
+UV = """python3 - "$@" <<'EOF'
+import json, subprocess, sys
+locked = json.load(open("uv.lock"))
+heads = {
+    name: subprocess.run(
+        ["git", "--git-dir", source, "rev-parse", "--short", "HEAD"],
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    for name, source in locked["sources"].items()
+}
+print(f"Resolved {len(heads)} packages in 1ms", file=sys.stderr)
+for name, head in heads.items():
+    if locked["at"][name] != head:
+        print(f"Update {name} {locked['at'][name]} -> {head}", file=sys.stderr)
+if "--dry-run" not in sys.argv:
+    json.dump({"sources": locked["sources"], "at": heads}, open("uv.lock", "w"))
+EOF"""
+
 
 class Fakes:
-    """Stand-ins for claude and github, each a script that logs its arguments and directory."""
+    """Stand-ins for claude, github, packagist, npmjs and devbox, each a script that logs its
+    arguments and directory."""
 
     def __init__(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         self.dir = tmp_path / "fakes"
@@ -75,6 +97,7 @@ class Fakes:
         self.github(PUBLISHES)
         self.packagist(PACKAGIST)
         self.npmjs(NPMJS)
+        self.devbox(UV)
 
     def claude(self, action: str) -> None:
         self.monkeypatch.setattr(claude_code, "CLAUDE", str(self._script("claude", action)))
@@ -87,6 +110,9 @@ class Fakes:
 
     def npmjs(self, action: str) -> None:
         self.monkeypatch.setattr(npm, "NPMJS", str(self._script("npmjs", action)))
+
+    def devbox(self, action: str) -> None:
+        self.monkeypatch.setattr(lock, "DEVBOX", str(self._script("devbox", action)))
 
     def calls(self, name: str) -> list[list[str]]:
         """Each call's directory, then its arguments."""
@@ -863,6 +889,153 @@ def test_without_the_npm_flag_npm_is_left_alone(projects, fakes, repo_fix):
     result = repo_fix()
     assert (result.progress, result.summary) == ([], "✔ All 1 clean")
     assert fakes.calls("npmjs") == []
+
+
+# --- Locked dependencies
+
+
+def source(projects, name: str) -> Path:
+    """A clone of a bare repository outside the root, which a uv.lock can lock as a git source,
+    with one commit pushed."""
+    clone = projects.remotes.parent / f"{name}-clone"
+    projects.git("init", "-q", "--bare", projects.remotes / f"{name}.git")
+    projects.git("init", "-q", clone)
+    projects.commit(clone, "init")
+    projects.git("-C", clone, "push", "-q", projects.remotes / f"{name}.git", "main")
+    return clone
+
+
+def release(projects, name: str) -> None:
+    """Pushes a new commit to the source made by source(projects, name)."""
+    clone = projects.remotes.parent / f"{name}-clone"
+    projects.commit(clone, "release")
+    projects.git("-C", clone, "push", "-q", projects.remotes / f"{name}.git", "main")
+
+
+def locking(projects, repo: Path, **sources: Path) -> None:
+    """Gives repo a devbox.json, and a uv.lock that locks each source at its HEAD, as the fake uv
+    reads it, committed and pushed."""
+    at = {name: git(origin, "rev-parse", "--short", "HEAD") for name, origin in sources.items()}
+    lock_file = {"sources": {name: str(origin) for name, origin in sources.items()}, "at": at}
+    (repo / "uv.lock").write_text(json.dumps(lock_file))
+    (repo / "devbox.json").write_text("{}\n")
+    git(repo, "add", "uv.lock", "devbox.json")
+    git(repo, "commit", "-qm", "Lock")
+    git(repo, "push", "-q")
+
+
+def test_a_uv_lock_on_the_trunk_that_can_be_upgraded_is_upgraded_committed_and_pushed(
+    projects, repo_fix
+):
+    a = projects.pushed_repo("a")
+    dep = source(projects, "dep")
+    locking(projects, a, dep=projects.remotes / "dep.git")
+    old = git(dep, "rev-parse", "--short", "HEAD")
+    release(projects, "dep")
+    new = git(dep, "rev-parse", "--short", "HEAD")
+    result = repo_fix()
+    assert result.progress[:2] == ["a", "  … Running `uv lock --upgrade`"]
+    assert re.fullmatch(r"  ✔ Committed \w+ Upgrade the locked dependencies:", result.progress[2])
+    assert result.progress[3:] == [f"    Update dep {old} -> {new}", "  ✔ Pushed main to origin"]
+    assert git(a, "log", "-1", "--format=%B", "origin/main") == (
+        f"Upgrade the locked dependencies\n\nUpdate dep {old} -> {new}"
+    )
+    assert (result.summary, result.status) == ("✔ All 1 clean", 0)
+
+
+def test_a_uv_lock_that_cannot_be_upgraded_is_left_alone(projects, fakes, repo_fix):
+    a = projects.pushed_repo("a")
+    source(projects, "dep")
+    locking(projects, a, dep=projects.remotes / "dep.git")
+    result = repo_fix()
+    assert (result.progress, result.summary) == ([], "✔ All 1 clean")
+    assert all("--dry-run" in call for call in fakes.calls("devbox"))
+
+
+def test_a_uv_lock_that_can_be_upgraded_is_reported_by_how_many_upgrades(projects, fakes, repo_fix):
+    a = projects.pushed_repo("a")
+    locking(projects, a)
+    fakes.devbox(
+        """case "$*" in *--dry-run*) printf 'Update one a -> b\\nAdd two v1\\n' >&2 ;; """
+        """*) echo 'error: no network' >&2; exit 2 ;; esac"""
+    )
+    assert any("📌 2 upgrades for uv.lock" in line for line in repo_fix().listing)
+
+
+def test_only_the_trunk_has_its_uv_lock_upgraded_not_other_worktrees(projects, fakes, repo_fix):
+    a = projects.pushed_repo("a")
+    source(projects, "dep")
+    locking(projects, a, dep=projects.remotes / "dep.git")
+    projects.worktree(a, "0-branch", "-b", "feature")
+    projects.worktree(a, "0-detached", "--detach")
+    release(projects, "dep")
+    repo_fix()
+    assert {call[0] for call in fakes.calls("devbox")} == {str(a)}
+    assert subjects(a, "--all").count("Upgrade the locked dependencies") == 1
+
+
+def test_with_pr_integration_no_uv_lock_is_upgraded(projects, fakes, repo_fix):
+    projects.integration("pr-rebase")
+    a = projects.pushed_repo("a")
+    source(projects, "dep")
+    locking(projects, a, dep=projects.remotes / "dep.git")
+    release(projects, "dep")
+    result = repo_fix()
+    assert (result.progress, fakes.calls("devbox")) == ([], [])
+
+
+def test_a_failed_upgrade_is_reported_with_what_uv_said_and_nothing_is_committed(
+    projects, fakes, repo_fix
+):
+    a = projects.pushed_repo("a")
+    locking(projects, a)
+    fakes.devbox(
+        """case "$*" in *--dry-run*) echo 'Update dep a -> b' >&2 ;; """
+        """*) echo 'error: no network' >&2; exit 2 ;; esac"""
+    )
+    result = repo_fix()
+    assert result.progress == [
+        "a",
+        "  … Running `uv lock --upgrade`",
+        "  ✘ uv lock --upgrade failed:",
+        "    error: no network",
+    ]
+    assert subjects(a)[-1] == "Lock"
+
+
+def test_a_uv_lock_whose_check_fails_is_reported_and_left_alone(projects, fakes, repo_fix):
+    a = projects.pushed_repo("a")
+    locking(projects, a)
+    fakes.devbox("""echo 'error: no network' >&2; exit 2""")
+    result = repo_fix()
+    assert result.progress == []
+    assert any("📌 uv.lock check failed" in line for line in result.listing)
+    assert result.status == 1
+
+
+def test_a_uv_lock_without_a_devbox_to_run_uv_in_is_reported(projects, fakes, repo_fix):
+    a = projects.pushed_repo("a")
+    locking(projects, a)
+    git(a, "rm", "-q", "devbox.json")
+    git(a, "commit", "-qm", "No devbox")
+    git(a, "push", "-q")
+    result = repo_fix()
+    assert (result.progress, fakes.calls("devbox")) == ([], [])
+    assert any("📌 no devbox.json to run uv in" in line for line in result.listing)
+
+
+def test_a_dependant_is_checked_again_once_a_repository_it_pins_is_fixed(projects, repo_fix):
+    kit = projects.python_project("kit", python_project("kit"))
+    a = projects.python_project("a", python_project("a", "kit"))
+    locking(projects, a, kit=projects.origin(kit))
+    projects.commit(kit, "local")
+    result = repo_fix()
+    assert result.progress[:4] == [
+        "kit",
+        "  ✔ Pushed main to origin",
+        "a",
+        "  … Running `uv lock --upgrade`",
+    ]
 
 
 # --- Directories that are not repositories

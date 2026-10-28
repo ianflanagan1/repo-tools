@@ -93,7 +93,7 @@ def main(argv: list[str] | None = None) -> int:
     scope = settings.npm_scope if args.npm else None
     # repo-list only checks, so nothing it wires is ever announced.
     pinned = set().union(*(packages.pinned(d.path) for d in directories))
-    active = plugins.built_in(vendor, scope, pinned, outcome.starting)
+    active = plugins.built_in(vendor, scope, pinned, outcome.starting, upgrade_locks=False)
     scan.survey(directories, active, fetch_first=args.fetch)
     ask_integration.ask_unset(directories, root, active)
     return report.show(root, directories, clean_too=args.all)

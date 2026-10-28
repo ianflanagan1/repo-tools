@@ -29,6 +29,8 @@ class Stage(Enum):
     """Give the repository a remote."""
     SYNC = "sync"
     """Bring each branch level with its upstream."""
+    LOCK = "lock"
+    """Upgrade what the lock files hold, and push that."""
     AFTER_PUSH = "after-push"
     """Bring other services level with what was pushed."""
 

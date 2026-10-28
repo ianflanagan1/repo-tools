@@ -7,9 +7,10 @@ integration is asked for one, as repo-list asks. Then each is fixed, a
 repository's worktrees one after another, the one that updates its trunk first, so the others
 catch up with the trunk as it now is. Repositories go in name order, but each that another pins
 as a dependency, such as from git in its uv.lock or from Packagist in its composer.lock, goes
-before it, and its own pinned dependencies before that; one read from a path doesn't count.
-Repositories that depend on each other are said to, and go in name order. A dependant is fixed
-even when its dependency's fix failed. In each:
+before it, and its own pinned dependencies before that; one read from a path doesn't count. So a
+dependant's uv.lock can upgrade to what its dependencies just pushed. Repositories that depend on
+each other are said to, and go in name order. A dependant is fixed even when its dependency's fix
+failed. In each:
 
   📝 uncommitted files   committed by Claude Code's /ianf-commit skill, then checked: the work tree
                          must be clean, on the same branch or detached HEAD, with earlier
@@ -20,6 +21,8 @@ even when its dependency's fix failed. In each:
   🔄 behind its base     rebased onto it, or with pr-merge integration the base merged in
   📤 unpushed            pushed to the upstream, or with no upstream to the only remote
   🔃 no pull request     opened as a draft, with PR integration
+  📌 uv.lock             one that `uv lock --upgrade` would change, on the trunk with local
+                         integration: upgraded in the project's devbox, committed alone and pushed
   📁 not a repository    with --init only: initialised, committed and published
   🐘 Packagist           with --packagist only, for a package of your vendor's, once pushed:
                          `packagist publish`, then `packagist update`, which waits until
@@ -102,6 +105,7 @@ def main(argv: list[str] | None = None) -> int:
         scope,
         set().union(*pinned.values()),
         log.begin,
+        upgrade_locks=True,
         init=args.init,
         wait_for_ci=not args.no_ci_wait,
     )
@@ -109,6 +113,7 @@ def main(argv: list[str] | None = None) -> int:
     ask_integration.ask_unset(directories, root, active)
     fixed_any = False
     changed: set[Path] = set()
+    fixed_names: set[packages.Name] = set()
     order, cycles = in_fix_order(directories, pinned)
     for cycle in cycles:
         names = ", ".join(str(d.path.relative_to(root)) for d in cycle)
@@ -116,8 +121,9 @@ def main(argv: list[str] | None = None) -> int:
     for directory in order:
         log.enter(directory.path.relative_to(root))
         common = directory.place.common_dir if directory.place else None
-        if common in changed:
-            # An earlier worktree's fix may have moved the trunk this one catches up with.
+        if common in changed or pinned[directory.path] & fixed_names:
+            # An earlier worktree's fix may have moved the trunk this one catches up with, and a
+            # dependency's may have pushed what this one's lock file can upgrade to.
             scan.check_all(directory, active)
         if directory.config_error:
             log(False, ConfigInvalid(directory.config_error).describe())
@@ -131,6 +137,8 @@ def main(argv: list[str] | None = None) -> int:
             fix(directory, active, log)
         if common and log.started:
             changed.add(common)
+        if log.started:
+            fixed_names |= packages.names(directory.path)
         if directory.trunk_update_failed:
             for other in directories:
                 if other.place and other.place.common_dir == common:
