@@ -78,7 +78,7 @@ class GitHub(Forge):
                 "gh",
                 "api",
                 f"repos/{repo}/contents/{path}?ref={revision}",
-                "-H",
+                "--header",
                 "Accept: application/vnd.github.raw",
             )
         except Failure as failure:

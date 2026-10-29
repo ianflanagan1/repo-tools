@@ -16,8 +16,18 @@ def git(directory: Path, *args: str) -> None:
 
 @pytest.fixture
 def repo(tmp_path: Path) -> Path:
-    git(tmp_path, "init", "-b", "main")
-    git(tmp_path, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "--allow-empty", "-m", "a")
+    git(tmp_path, "init", "--initial-branch", "main")
+    git(
+        tmp_path,
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@t",
+        "commit",
+        "--allow-empty",
+        "--message",
+        "a",
+    )
     return tmp_path
 
 

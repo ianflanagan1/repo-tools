@@ -45,7 +45,7 @@ def services(monkeypatch: pytest.MonkeyPatch) -> Services:
 
 @pytest.fixture
 def clone(tmp_path: Path) -> Path:
-    git(tmp_path, "init", "-q", "-b", "main")
+    git(tmp_path, "init", "--quiet", "--initial-branch", "main")
     git(tmp_path, "remote", "add", "origin", "git@github.com:me/old.git")
     return tmp_path
 

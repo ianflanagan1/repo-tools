@@ -53,7 +53,7 @@ def release(directory: Path, level: str) -> Done | NothingToDo:
         raise Precondition("No origin remote.", "Run `bitbucket publish` first.")
     repo = api.repo_from_url(origin)
 
-    output(*git, "fetch", "-q", "--tags", "origin")
+    output(*git, "fetch", "--quiet", "--tags", "origin")
     if output(*git, "rev-list", "--count", "HEAD", "--not", "--remotes=origin") != "0":
         raise Precondition(
             "HEAD isn't on origin.", "Push it first, so the release is of what's on Bitbucket."
@@ -67,7 +67,7 @@ def release(directory: Path, level: str) -> Done | NothingToDo:
         tag = max(released, key=versions.key)
     else:
         tag = versions.next_version(output(*git, "tag").splitlines(), level)
-        output(*git, "tag", "-a", "-m", tag, tag)
+        output(*git, "tag", "--annotate", "--message", tag, tag)
         outcome.changed(f"Tagged HEAD as {tag}")
 
     # 2. Push

@@ -210,7 +210,7 @@ def locate(directory: Directory) -> None:
     try:
         common = Path(git(path, "rev-parse", "--path-format=absolute", "--git-common-dir"))
         git_dir = Path(git(path, "rev-parse", "--absolute-git-dir"))
-        head = git(path, "symbolic-ref", "-q", "--short", "HEAD", check=False) or None
+        head = git(path, "symbolic-ref", "--quiet", "--short", "HEAD", check=False) or None
         worktrees = parse_worktrees(git(path, "worktree", "list", "--porcelain"))
     except subprocess.CalledProcessError:
         return
@@ -321,7 +321,7 @@ def fetch(repo: Path) -> bool:
     """Fetch all of the repository's remotes. False if that failed or needed a password."""
     try:
         result = subprocess.run(
-            ["git", "-C", str(repo), "fetch", "-q", "--all"],
+            ["git", "-C", str(repo), "fetch", "--quiet", "--all"],
             capture_output=True,
             env=batch_env(),
             timeout=FETCH_TIMEOUT_SECONDS,

@@ -13,13 +13,16 @@ from cli_kit.models import claude_code
 from repo_list import fix
 from repo_list.plugins import github, lock, npm, packagist
 
-COMMITS = """git add -A && git commit -qm "Fake commit" && echo '{"result": "✅ Committed."}'"""
+COMMITS = """git add --all && git commit --quiet --message "Fake commit" \
+&& echo '{"result": "✅ Committed."}'"""
 DOES_NOTHING = """printf '%s' '{"result": "🛑 Stopped.\\nThe check failed."}'"""
-REWRITES = """git add -A && git commit -q --amend -m "Rewritten" && echo '{"result": "✅"}'"""
-LEAVES_A_FILE = """git add f && git commit -qm "Fake commit" && echo '{"result": "Kept g out."}'"""
+REWRITES = """git add --all && git commit --quiet --amend --message "Rewritten" \
+&& echo '{"result": "✅"}'"""
+LEAVES_A_FILE = """git add f && git commit --quiet --message "Fake commit" \
+&& echo '{"result": "Kept g out."}'"""
 
-PUBLISHES = """git init -q --bare "$REMOTE" && git -C "$2" remote add origin "$REMOTE" \
-&& git -C "$2" push -q -u origin HEAD && echo 'Created me/thing (public)' \
+PUBLISHES = """git init --quiet --bare "$REMOTE" && git -C "$2" remote add origin "$REMOTE" \
+&& git -C "$2" push --quiet --set-upstream origin HEAD && echo 'Created me/thing (public)' \
 && echo '✅ Published.' && echo 'https://github.com/me/thing'"""
 REFUSES = """echo '⚠️ Not today.' >&2; exit 1"""
 
@@ -294,7 +297,7 @@ def test_a_commit_run_that_rewrites_earlier_commits_fails_and_pushes_nothing(
 
 def test_work_on_a_detached_head_is_committed_there(projects, fakes, repo_fix):
     a = projects.pushed_repo("a")
-    git(a, "checkout", "-q", "--detach")
+    git(a, "checkout", "--quiet", "--detach")
     (a / "g").write_text("new\n")
     result = repo_fix()
     assert subjects(a) == ["init", "Fake commit"]
@@ -324,7 +327,7 @@ def test_with_pr_integration_work_on_the_trunk_is_not_committed_as_it_belongs_on
 def test_with_pr_integration_work_on_a_branch_is_committed_and_pushed(projects, fakes, repo_fix):
     projects.integration("pr-merge")
     a = projects.pushed_repo("a")
-    git(a, "checkout", "-qb", "feature")
+    git(a, "checkout", "--quiet", "-b", "feature")
     (a / "g").write_text("new\n")
     result = repo_fix()
     assert result.progress[-1] == "  ✔ Pushed feature to origin, now its upstream"
@@ -366,7 +369,7 @@ def test_with_pr_integration_a_branch_without_an_upstream_is_pushed_to_the_only_
 ):
     projects.integration("pr-merge")
     a = projects.pushed_repo("a")
-    git(a, "checkout", "-qb", "feature")
+    git(a, "checkout", "--quiet", "-b", "feature")
     projects.commit(a, "feature work")
     result = repo_fix()
     assert result.progress == ["a", "  ✔ Pushed feature to origin, now its upstream"]
@@ -379,7 +382,7 @@ def test_a_branch_without_an_upstream_is_not_pushed_when_there_are_several_remot
     projects.integration("pr-merge")
     a = projects.pushed_repo("a")
     git(a, "remote", "add", "second", str(projects.origin(a)))
-    git(a, "checkout", "-qb", "feature")
+    git(a, "checkout", "--quiet", "-b", "feature")
     projects.commit(a, "feature work")
     result = repo_fix()
     assert result.progress == [
@@ -411,7 +414,7 @@ def test_with_local_integration_a_trunk_that_has_diverged_from_its_upstream_is_r
     projects.push_from_elsewhere(a)
     (a / "g").write_text("local\n")
     git(a, "add", "g")
-    git(a, "commit", "-qm", "local")
+    git(a, "commit", "--quiet", "--message", "local")
     result = repo_fix()
     assert result.progress == [
         "a",
@@ -512,7 +515,7 @@ def test_the_trunk_is_updated_before_a_worktree_is_rebased_onto_it(projects, fak
     wt = projects.worktree(a, "0-wt", "--detach")
     (wt / "g").write_text("wt work\n")
     git(wt, "add", "g")
-    git(wt, "commit", "-qm", "wt work")
+    git(wt, "commit", "--quiet", "--message", "wt work")
     projects.push_from_elsewhere(a)
     result = repo_fix()
     assert result.progress == [
@@ -538,7 +541,7 @@ def test_a_worktree_is_not_caught_up_with_a_trunk_that_failed_to_update(projects
     a = projects.pushed_repo("a")
     projects.commit(a, "two")
     wt = projects.root / "a-wt"
-    git(a, "worktree", "add", "-q", "--detach", str(wt), "main~1")
+    git(a, "worktree", "add", "--quiet", "--detach", str(wt), "main~1")
     projects.push_from_elsewhere(a)
     result = repo_fix()
     assert result.progress == [
@@ -555,7 +558,7 @@ def test_a_worktree_whose_catching_up_would_conflict_is_left_for_you(projects, f
     wt = projects.worktree(a, "a-wt", "-b", "feature")
     projects.commit(wt, "feature work")
     projects.commit(a, "more")
-    git(a, "push", "-q")
+    git(a, "push", "--quiet")
     result = repo_fix()
     assert result.progress == [
         "a-wt",
@@ -568,11 +571,11 @@ def test_with_pr_rebase_integration_a_branch_is_rebased_on_the_remote_trunk_and_
 ):
     projects.integration("pr-rebase")
     a = projects.pushed_repo("a")
-    git(a, "checkout", "-qb", "feature")
+    git(a, "checkout", "--quiet", "-b", "feature")
     (a / "g").write_text("feature work\n")
     git(a, "add", "g")
-    git(a, "commit", "-qm", "feature work")
-    git(a, "push", "-qu", "origin", "feature")
+    git(a, "commit", "--quiet", "--message", "feature work")
+    git(a, "push", "--quiet", "--set-upstream", "origin", "feature")
     projects.push_from_elsewhere(a)
     result = repo_fix()
     assert result.progress == [
@@ -589,11 +592,11 @@ def test_with_pr_merge_integration_the_remote_trunk_is_merged_into_a_branch_and_
 ):
     projects.integration("pr-merge")
     a = projects.pushed_repo("a")
-    git(a, "checkout", "-qb", "feature")
+    git(a, "checkout", "--quiet", "-b", "feature")
     (a / "g").write_text("feature work\n")
     git(a, "add", "g")
-    git(a, "commit", "-qm", "feature work")
-    git(a, "push", "-qu", "origin", "feature")
+    git(a, "commit", "--quiet", "--message", "feature work")
+    git(a, "push", "--quiet", "--set-upstream", "origin", "feature")
     projects.push_from_elsewhere(a)
     result = repo_fix()
     assert result.progress == [
@@ -728,9 +731,9 @@ def test_with_pr_integration_other_branches_are_pushed_once_the_repository_is_pu
     projects.integration("pr-merge")
     a = projects.local_repo("a")
     git(a, "branch", "feature")
-    git(a, "checkout", "-q", "feature")
+    git(a, "checkout", "--quiet", "feature")
     projects.commit(a, "feature work")
-    git(a, "checkout", "-q", "main")
+    git(a, "checkout", "--quiet", "main")
     result = repo_fix()
     assert result.progress[-1] == "  ✔ Pushed feature to origin, now its upstream"
     assert result.summary == "✔ All 1 clean"
@@ -741,7 +744,7 @@ def test_with_pr_integration_other_branches_are_pushed_once_the_repository_is_pu
 
 def test_a_package_not_on_packagist_is_published_there(projects, fakes, repo_fix):
     a = projects.package("a")
-    result = repo_fix("-p")
+    result = repo_fix("--packagist")
     assert result.progress == [
         "a",
         "  … Running `packagist publish`",
@@ -763,7 +766,7 @@ def test_a_package_packagist_lacks_versions_of_is_updated_there(
 ):
     projects.package("a")
     packagist.has("me/a", lacking=["v0.2.0"])
-    result = repo_fix("-p")
+    result = repo_fix("--packagist")
     assert result.progress == [
         "a",
         "  … Running `packagist publish`",
@@ -778,7 +781,7 @@ def test_a_package_packagist_lacks_versions_of_is_updated_there(
 def test_a_package_packagist_is_up_to_date_on_is_left_alone(projects, packagist, fakes, repo_fix):
     projects.package("a")
     packagist.has("me/a")
-    result = repo_fix("-p")
+    result = repo_fix("--packagist")
     assert (result.progress, result.summary) == ([], "✔ All 1 clean")
     assert fakes.calls("packagist") == []
 
@@ -788,7 +791,7 @@ def test_packagist_is_checked_after_pushing_so_it_is_compared_with_what_was_push
 ):
     a = projects.package("a")
     projects.commit(a, "local")
-    result = repo_fix("-p")
+    result = repo_fix("--packagist")
     assert result.progress[:2] == ["a", "  ✔ Pushed main to origin"]
     assert result.progress[2:4] == [
         "  … Running `packagist publish`",
@@ -799,7 +802,7 @@ def test_packagist_is_checked_after_pushing_so_it_is_compared_with_what_was_push
 def test_a_failed_packagist_publish_is_reported_and_no_update_is_tried(projects, fakes, repo_fix):
     a = projects.package("a")
     fakes.packagist(REFUSES)
-    result = repo_fix("-p")
+    result = repo_fix("--packagist")
     assert result.progress == [
         "a",
         "  … Running `packagist publish`",
@@ -898,10 +901,10 @@ def source(projects, name: str) -> Path:
     """A clone of a bare repository outside the root, which a uv.lock can lock as a git source,
     with one commit pushed."""
     clone = projects.remotes.parent / f"{name}-clone"
-    projects.git("init", "-q", "--bare", projects.remotes / f"{name}.git")
-    projects.git("init", "-q", clone)
+    projects.git("init", "--quiet", "--bare", projects.remotes / f"{name}.git")
+    projects.git("init", "--quiet", clone)
     projects.commit(clone, "init")
-    projects.git("-C", clone, "push", "-q", projects.remotes / f"{name}.git", "main")
+    projects.git("-C", clone, "push", "--quiet", projects.remotes / f"{name}.git", "main")
     return clone
 
 
@@ -909,7 +912,7 @@ def release(projects, name: str) -> None:
     """Pushes a new commit to the source made by source(projects, name)."""
     clone = projects.remotes.parent / f"{name}-clone"
     projects.commit(clone, "release")
-    projects.git("-C", clone, "push", "-q", projects.remotes / f"{name}.git", "main")
+    projects.git("-C", clone, "push", "--quiet", projects.remotes / f"{name}.git", "main")
 
 
 def locking(projects, repo: Path, **sources: Path) -> None:
@@ -920,8 +923,8 @@ def locking(projects, repo: Path, **sources: Path) -> None:
     (repo / "uv.lock").write_text(json.dumps(lock_file))
     (repo / "devbox.json").write_text("{}\n")
     git(repo, "add", "uv.lock", "devbox.json")
-    git(repo, "commit", "-qm", "Lock")
-    git(repo, "push", "-q")
+    git(repo, "commit", "--quiet", "--message", "Lock")
+    git(repo, "push", "--quiet")
 
 
 def test_a_uv_lock_on_the_trunk_that_can_be_upgraded_is_upgraded_committed_and_pushed(
@@ -1016,9 +1019,9 @@ def test_a_uv_lock_whose_check_fails_is_reported_and_left_alone(projects, fakes,
 def test_a_uv_lock_without_a_devbox_to_run_uv_in_is_reported(projects, fakes, repo_fix):
     a = projects.pushed_repo("a")
     locking(projects, a)
-    git(a, "rm", "-q", "devbox.json")
-    git(a, "commit", "-qm", "No devbox")
-    git(a, "push", "-q")
+    git(a, "rm", "--quiet", "devbox.json")
+    git(a, "commit", "--quiet", "--message", "No devbox")
+    git(a, "push", "--quiet")
     result = repo_fix()
     assert (result.progress, fakes.calls("devbox")) == ([], [])
     assert any("📌 no devbox.json to run uv in" in line for line in result.listing)
@@ -1068,8 +1071,8 @@ def test_the_init_flag_makes_a_directory_of_files_a_published_repository(project
 def test_stashes_and_commits_on_a_detached_head_are_left_for_you(projects, fakes, repo_fix):
     a = projects.pushed_repo("a")
     (a / "f").write_text("change\n")
-    git(a, "stash", "-q")
-    git(a, "checkout", "-q", "--detach")
+    git(a, "stash", "--quiet")
+    git(a, "checkout", "--quiet", "--detach")
     projects.commit(a, "lost")
     result = repo_fix()
     assert result.progress == []

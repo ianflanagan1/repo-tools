@@ -43,7 +43,9 @@ def services(monkeypatch: pytest.MonkeyPatch) -> Services:
 @pytest.fixture
 def package(tmp_path: Path) -> Path:
     (tmp_path / "composer.json").write_text('{"name": "me/thing"}')
-    subprocess.run(["git", "init", "-q", "-b", "main", str(tmp_path)], check=True)
+    subprocess.run(
+        ["git", "init", "--quiet", "--initial-branch", "main", str(tmp_path)], check=True
+    )
     return tmp_path
 
 

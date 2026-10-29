@@ -59,9 +59,19 @@ def package(tmp_path: Path) -> Path:
         '{"name": "@me/thing", "version": "0.0.0",'
         ' "repository": {"url": "git+https://github.com/me/thing.git"}}'
     )
-    git(directory.parent, "init", "-q", "-b", "main", "thing")
-    git(directory, "add", "-A")
-    git(directory, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "First")
+    git(directory.parent, "init", "--quiet", "--initial-branch", "main", "thing")
+    git(directory, "add", "--all")
+    git(
+        directory,
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@t",
+        "commit",
+        "--quiet",
+        "--message",
+        "First",
+    )
     git(directory, "tag", "v0.1.0")
     return directory
 
@@ -98,7 +108,7 @@ def test_a_package_already_on_npm_only_gets_the_workflow_trusted(services, packa
 
 def test_a_package_already_on_npm_needs_no_version_tag(services, package):
     services.versions = frozenset({"0.1.0"})
-    git(package, "tag", "-d", "v0.1.0")
+    git(package, "tag", "--delete", "v0.1.0")
     assert isinstance(publish(package), Done)
 
 
@@ -110,7 +120,7 @@ def test_the_highest_version_tag_at_head_is_published(services, package):
 
 
 def test_a_new_package_without_a_version_tag_at_head_is_refused(services, package):
-    git(package, "tag", "-d", "v0.1.0")
+    git(package, "tag", "--delete", "v0.1.0")
     with pytest.raises(Precondition, match="HEAD has no version tag") as problem:
         publish(package)
     assert problem.value.details == (

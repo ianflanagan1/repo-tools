@@ -19,7 +19,7 @@ class Detached(Plugin):
     name = "detached"
 
     def check(self, directory: Directory) -> list[Problem]:
-        if run(directory.path, "symbolic-ref", "-q", "HEAD").returncode == 0:
+        if run(directory.path, "symbolic-ref", "--quiet", "HEAD").returncode == 0:
             return []
         commits = int(
             git(directory.path, "rev-list", "--count", "HEAD", "--not", "--branches", "--remotes")

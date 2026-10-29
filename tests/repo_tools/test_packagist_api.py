@@ -64,15 +64,15 @@ def package(tmp_path: Path) -> Path:
     """A package with one commit on main, pushed to an origin that is a github.com URL."""
     package = tmp_path / "thing"
     remote = tmp_path / "remote.git"
-    git(tmp_path, "init", "-q", "--bare", str(remote))
+    git(tmp_path, "init", "--quiet", "--bare", str(remote))
     package.mkdir()
-    git(package, "init", "-q", "-b", "main")
+    git(package, "init", "--quiet", "--initial-branch", "main")
     git(package, "config", "user.name", "t")
     git(package, "config", "user.email", "t@t")
     git(package, "config", f"url.{remote}.insteadOf", "git@github.com:me/thing.git")
     git(package, "remote", "add", "origin", "git@github.com:me/thing.git")
-    git(package, "commit", "-q", "--allow-empty", "-m", "init")
-    git(package, "push", "-q", "origin", "main")
+    git(package, "commit", "--quiet", "--allow-empty", "--message", "init")
+    git(package, "push", "--quiet", "origin", "main")
     return package
 
 
@@ -82,8 +82,8 @@ def offers(monkeypatch: pytest.MonkeyPatch, versions: set[str], commits: set[str
 
 
 def test_a_package_offering_everything_on_origin_lacks_nothing(package, monkeypatch):
-    git(package, "tag", "-a", "-m", "v0.1.0", "v0.1.0")
-    git(package, "push", "-q", "origin", "v0.1.0")
+    git(package, "tag", "--annotate", "--message", "v0.1.0", "v0.1.0")
+    git(package, "push", "--quiet", "origin", "v0.1.0")
     offers(monkeypatch, {"v0.1.0"}, {git(package, "rev-parse", "main")})
     assert api.lacks("me/thing", package) == []
 
@@ -91,21 +91,21 @@ def test_a_package_offering_everything_on_origin_lacks_nothing(package, monkeypa
 def test_it_lacks_each_version_tag_on_origin_it_does_not_offer(package, monkeypatch):
     git(package, "tag", "v0.1.0")
     git(package, "tag", "v0.2.0-beta1")
-    git(package, "push", "-q", "origin", "--tags")
+    git(package, "push", "--quiet", "origin", "--tags")
     offers(monkeypatch, {"v0.1.0"}, {git(package, "rev-parse", "main")})
     assert api.lacks("me/thing", package) == ["v0.2.0-beta1"]
 
 
 def test_it_lacks_each_branch_on_origin_whose_commit_it_does_not_offer(package, monkeypatch):
     offers(monkeypatch, set(), {git(package, "rev-parse", "main")})
-    git(package, "commit", "-q", "--allow-empty", "-m", "more")
-    git(package, "push", "-q", "origin", "main", "main:feature")
+    git(package, "commit", "--quiet", "--allow-empty", "--message", "more")
+    git(package, "push", "--quiet", "origin", "main", "main:feature")
     assert api.lacks("me/thing", package) == ["feature", "main"]
 
 
 def test_tags_that_are_not_versions_are_not_expected(package, monkeypatch):
     git(package, "tag", "latest")
-    git(package, "push", "-q", "origin", "--tags")
+    git(package, "push", "--quiet", "origin", "--tags")
     offers(monkeypatch, set(), {git(package, "rev-parse", "main")})
     assert api.lacks("me/thing", package) == []
 
@@ -113,7 +113,7 @@ def test_tags_that_are_not_versions_are_not_expected(package, monkeypatch):
 def test_what_is_only_local_is_not_expected(package, monkeypatch):
     offers(monkeypatch, set(), {git(package, "rev-parse", "main")})
     git(package, "tag", "v0.1.0")
-    git(package, "commit", "-q", "--allow-empty", "-m", "unpushed")
+    git(package, "commit", "--quiet", "--allow-empty", "--message", "unpushed")
     assert api.lacks("me/thing", package) == []
 
 

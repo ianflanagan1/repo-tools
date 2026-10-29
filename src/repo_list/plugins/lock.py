@@ -96,8 +96,8 @@ class Lock(Plugin):
         if not git(repo, "status", "--porcelain", "--", "uv.lock"):
             return True
         done = upgrades(result.stderr)
-        body = ["-m", "\n".join(done)] if done else []
-        committed = run(repo, "commit", "-q", "-m", MESSAGE, *body, "--", "uv.lock")
+        body = ["--message", "\n".join(done)] if done else []
+        committed = run(repo, "commit", "--quiet", "--message", MESSAGE, *body, "--", "uv.lock")
         if committed.returncode != 0:
             log(False, "Commit of uv.lock failed", *committed.stderr.strip().splitlines())
             return False

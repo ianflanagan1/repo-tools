@@ -156,7 +156,7 @@ def _head(directory: Directory, remotes: list[str]) -> Head | None:
     repo = directory.path
     if place is None or place.trunk is None or place.head == place.trunk:
         return None
-    if not git(repo, "rev-parse", "-q", "--verify", "HEAD", check=False):
+    if not git(repo, "rev-parse", "--quiet", "--verify", "HEAD", check=False):
         return None
     if place.integration is None:
         return None
@@ -169,7 +169,7 @@ def _head(directory: Directory, remotes: list[str]) -> Head | None:
     else:
         base = place.trunk
         ref = f"refs/heads/{base}"
-    if not git(repo, "rev-parse", "-q", "--verify", ref, check=False):
+    if not git(repo, "rev-parse", "--quiet", "--verify", ref, check=False):
         return None
     behind = _count(repo, f"HEAD..{ref}")
     conflicts = bool(behind) and (
@@ -196,9 +196,9 @@ def do_pull(directory: Directory, pull: Pull, upstreams: dict[str, str], log: Lo
 def fast_forward(directory: Directory, branch: str, here: bool, upstream: str, log: Log) -> bool:
     repo = directory.path
     if here:
-        command = ["merge", "-q", "--ff-only", upstream]
+        command = ["merge", "--quiet", "--ff-only", upstream]
     else:
-        command = ["fetch", "-q", ".", f"refs/remotes/{upstream}:refs/heads/{branch}"]
+        command = ["fetch", "--quiet", ".", f"refs/remotes/{upstream}:refs/heads/{branch}"]
     result = run(repo, *command)
     if result.returncode == 0:
         log(True, f"Fast-forwarded {branch} to {upstream}")
@@ -211,7 +211,9 @@ def rebase_on_upstream(directory: Directory, branch: str, upstream: str, log: Lo
     if reason := _not_clean(directory):
         log(False, f"Not rebasing {branch} onto {upstream}: {reason}")
         return False
-    if _replay(directory, ["rebase", "-q", upstream], "rebase", f"{branch} onto {upstream}", log):
+    if _replay(
+        directory, ["rebase", "--quiet", upstream], "rebase", f"{branch} onto {upstream}", log
+    ):
         log(True, f"Rebased {branch} onto {upstream}")
         return True
     return False
@@ -226,12 +228,12 @@ def catch_up(directory: Directory, action: CatchUp | WouldConflict, log: Log) ->
         case CatchUp(base, rebase=True):
             if reason := _not_clean(directory):
                 log(False, f"Not rebasing onto {base}: {reason}")
-            elif _replay(directory, ["rebase", "-q", base], "rebase", f"onto {base}", log):
+            elif _replay(directory, ["rebase", "--quiet", base], "rebase", f"onto {base}", log):
                 log(True, f"Rebased onto {base}")
         case CatchUp(base, rebase=False):
             if reason := _not_clean(directory):
                 log(False, f"Not merging {base}: {reason}")
-            elif _replay(directory, ["merge", "-q", "--no-edit", base], "merge", base, log):
+            elif _replay(directory, ["merge", "--quiet", "--no-edit", base], "merge", base, log):
                 log(True, f"Merged {base}")
         case _:
             assert_never(action)
@@ -244,7 +246,7 @@ def push(directory: Directory, action: Push, upstream: str, log: Log) -> None:
     if upstream:
         remote = git(repo, "config", f"branch.{branch}.remote")
         merge = git(repo, "config", f"branch.{branch}.merge")
-        result = run(repo, "push", "-q", *lease, remote, f"refs/heads/{branch}:{merge}")
+        result = run(repo, "push", "--quiet", *lease, remote, f"refs/heads/{branch}:{merge}")
         done = f"Pushed {branch} to {remote}" + (", with a lease" if action.force else "")
     else:
         remotes = git(repo, "remote").splitlines()
@@ -252,7 +254,7 @@ def push(directory: Directory, action: Push, upstream: str, log: Log) -> None:
             choices = f"{len(remotes)} remotes to choose from"
             log(False, f"Not pushing {branch}: it has no upstream, and {choices}")
             return
-        result = run(repo, "push", "-q", "-u", remotes[0], branch)
+        result = run(repo, "push", "--quiet", "--set-upstream", remotes[0], branch)
         done = f"Pushed {branch} to {remotes[0]}, now its upstream"
     if result.returncode == 0:
         log(True, done)

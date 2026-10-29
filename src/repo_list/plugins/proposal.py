@@ -93,7 +93,7 @@ def _target(
     if branch is None or trunk is None or branch == trunk:
         return None
     repo = directory.path
-    upstream = git(repo, "rev-parse", "-q", "--abbrev-ref", f"{branch}@{{u}}", check=False)
+    upstream = git(repo, "rev-parse", "--quiet", "--abbrev-ref", f"{branch}@{{u}}", check=False)
     remote = git(repo, "config", f"branch.{branch}.remote", check=False)
     if not upstream or not remote:
         return None

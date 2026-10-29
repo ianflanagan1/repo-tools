@@ -31,14 +31,14 @@ def releases(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 @pytest.fixture
 def remote(tmp_path: Path) -> Path:
     remote = tmp_path / "remote.git"
-    git(tmp_path, "init", "-q", "--bare", str(remote))
+    git(tmp_path, "init", "--quiet", "--bare", str(remote))
     return remote
 
 
 def clone_of(remote: Path, directory: Path) -> Path:
     """A clone whose origin is me/thing on GitHub, leading to remote."""
     directory.mkdir()
-    git(directory, "init", "-q", "-b", "main")
+    git(directory, "init", "--quiet", "--initial-branch", "main")
     git(directory, "config", "user.name", "t")
     git(directory, "config", "user.email", "t@t")
     git(directory, "config", f"url.{remote}.insteadOf", "git@github.com:me/thing.git")
@@ -55,8 +55,8 @@ def project(tmp_path: Path, remote: Path) -> Path:
 
 
 def commit_and_push(project: Path) -> None:
-    git(project, "commit", "-q", "--allow-empty", "-m", "change")
-    git(project, "push", "-q", "-u", "origin", "main")
+    git(project, "commit", "--quiet", "--allow-empty", "--message", "change")
+    git(project, "push", "--quiet", "--set-upstream", "origin", "main")
 
 
 def tags_on(remote: Path) -> list[str]:
@@ -104,9 +104,9 @@ def test_tags_that_are_not_release_versions_are_ignored(releases, project, remot
 
 def test_a_tag_pushed_from_another_clone_is_counted(releases, project, remote, tmp_path):
     other = clone_of(remote, tmp_path / "other")
-    git(other, "pull", "-q", "origin", "main")
+    git(other, "pull", "--quiet", "origin", "main")
     git(other, "tag", "v0.5.0")
-    git(other, "push", "-q", "origin", "v0.5.0")
+    git(other, "push", "--quiet", "origin", "v0.5.0")
     commit_and_push(project)
     release(project, "patch")
     assert "v0.5.1" in tags_on(remote)
@@ -144,7 +144,7 @@ def test_releasing_a_commit_already_released_has_nothing_to_do(releases, project
 
 
 def test_a_release_stopped_after_tagging_is_finished_on_running_again(releases, project, remote):
-    git(project, "tag", "-a", "-m", "v0.1.0", "v0.1.0")
+    git(project, "tag", "--annotate", "--message", "v0.1.0", "v0.1.0")
     release(project, "major")
     assert outcome.changes() == ["Pushed v0.1.0", "Created the GitHub release v0.1.0"]
     assert tags_on(remote) == ["v0.1.0"]
@@ -161,7 +161,7 @@ def test_uncommitted_changes_are_refused(releases, project, remote):
 
 
 def test_commits_not_yet_pushed_are_refused(releases, project, remote):
-    git(project, "commit", "-q", "--allow-empty", "-m", "local")
+    git(project, "commit", "--quiet", "--allow-empty", "--message", "local")
     with pytest.raises(Precondition, match="HEAD isn't on origin") as problem:
         release(project, "patch")
     assert problem.value.details == ("Push it first, so the release is of what's on GitHub.",)
@@ -169,7 +169,7 @@ def test_commits_not_yet_pushed_are_refused(releases, project, remote):
 
 
 def test_a_detached_head_is_refused(releases, project):
-    git(project, "checkout", "-q", "--detach")
+    git(project, "checkout", "--quiet", "--detach")
     with pytest.raises(Precondition, match="HEAD is detached"):
         release(project, "patch")
 

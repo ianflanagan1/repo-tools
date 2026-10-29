@@ -34,7 +34,7 @@ class Branch(Plugin):
 
     def check(self, directory: Directory) -> list[Problem]:
         repo = directory.path
-        branch = git(repo, "symbolic-ref", "-q", "--short", "HEAD", check=False) or None
-        commit = git(repo, "rev-parse", "-q", "--short", "--verify", "HEAD", check=False)
+        branch = git(repo, "symbolic-ref", "--quiet", "--short", "HEAD", check=False) or None
+        commit = git(repo, "rev-parse", "--quiet", "--short", "--verify", "HEAD", check=False)
         trunk = directory.place.trunk if directory.place else None
         return assess(Head(branch, commit, trunk))

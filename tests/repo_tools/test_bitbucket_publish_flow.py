@@ -30,22 +30,22 @@ def project(tmp_path: Path) -> Path:
     project = tmp_path / "Thing"
     remote = tmp_path / "remote.git"
     project.mkdir()
-    git(tmp_path, "init", "-q", "--bare", str(remote))
-    git(project, "init", "-q", "-b", "main")
+    git(tmp_path, "init", "--quiet", "--bare", str(remote))
+    git(project, "init", "--quiet", "--initial-branch", "main")
     git(project, "config", "user.name", "t")
     git(project, "config", "user.email", "t@t")
     git(project, "config", f"url.{remote}.insteadOf", "git@bitbucket.org:team/thing.git")
     (project / "composer.json").write_text('{"description": "A thing"}')
-    git(project, "add", "-A")
-    git(project, "commit", "-qm", "init")
+    git(project, "add", "--all")
+    git(project, "commit", "--quiet", "--message", "init")
     git(project, "tag", "v1.0.0")
     return project
 
 
 def with_pipelines(project: Path) -> None:
     (project / "bitbucket-pipelines.yml").write_text("pipelines: {}\n")
-    git(project, "add", "-A")
-    git(project, "commit", "-qm", "Add pipelines")
+    git(project, "add", "--all")
+    git(project, "commit", "--quiet", "--message", "Add pipelines")
 
 
 def test_publishing_creates_the_repo_in_the_workspace_with_a_lower_case_slug(bitbucket, project):
@@ -142,8 +142,8 @@ def undescribed(project: Path) -> Path:
     """The project, with no description in its manifest."""
     (project / "composer.json").write_text("{}")
     (project / "README.md").write_text("# Thing\nSorts socks.\n")
-    git(project, "add", "-A")
-    git(project, "commit", "-qm", "undescribe")
+    git(project, "add", "--all")
+    git(project, "commit", "--quiet", "--message", "undescribe")
     return project
 
 

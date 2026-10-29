@@ -48,10 +48,10 @@ def git(repo: Path, *args: str) -> str:
 def pushed_feature(projects, *subjects: str) -> Path:
     """A repository on a branch, feature, with a commit of each subject, pushed to origin."""
     a = projects.pushed_repo("a")
-    git(a, "checkout", "-qb", "feature")
+    git(a, "checkout", "--quiet", "-b", "feature")
     for subject in subjects:
         projects.commit(a, subject)
-    git(a, "push", "-qu", "origin", "feature")
+    git(a, "push", "--quiet", "--set-upstream", "origin", "feature")
     return a
 
 
@@ -100,7 +100,7 @@ def test_a_branch_with_a_pull_request_open_is_left_alone(projects, host, capsys)
 def test_a_branch_pushed_in_the_same_run_gets_its_draft_then(projects, host, capsys):
     projects.integration("pr-merge")
     a = projects.pushed_repo("a")
-    git(a, "checkout", "-qb", "feature")
+    git(a, "checkout", "--quiet", "-b", "feature")
     projects.commit(a, "feature work")
     assert progress(capsys) == [
         "a",
@@ -134,7 +134,7 @@ def test_a_host_that_cannot_say_is_reported_with_why(projects, host, run):
 def test_without_fetching_no_host_is_asked(projects, host, run):
     projects.integration("pr-merge")
     pushed_feature(projects, "feature work")
-    assert run("-a").listing == ["🔀 ❔    a  feature  ✔"]
+    assert run("--all").listing == ["🔀 ❔    a  feature  ✔"]
 
 
 def test_a_branch_with_nothing_for_the_trunk_gets_no_pull_request(projects, host, capsys):

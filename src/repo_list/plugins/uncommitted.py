@@ -47,7 +47,7 @@ class Uncommitted(Plugin):
         if operation := in_progress(repo):
             log(False, f"Not committing: {operation} is in progress")
             return False
-        branch = git(repo, "symbolic-ref", "-q", "--short", "HEAD", check=False)
+        branch = git(repo, "symbolic-ref", "--quiet", "--short", "HEAD", check=False)
         place = directory.place
         by_pull_request = place and place.integration and place.integration.by_pull_request
         if by_pull_request and branch and branch == place.trunk:
@@ -58,7 +58,7 @@ class Uncommitted(Plugin):
             log(False, f"Not committing: no commit skill in {skill}")
             return False
 
-        start = git(repo, "rev-parse", "-q", "--verify", "HEAD", check=False)
+        start = git(repo, "rev-parse", "--quiet", "--verify", "HEAD", check=False)
         ended = self.agent.run(
             f"/{COMMIT_SKILL}",
             repo,
@@ -76,12 +76,12 @@ class Uncommitted(Plugin):
 
         # Judge the run by git's state, not by what claude says: a skill that fails to load
         # still ends as a success, with nothing done.
-        now_on = git(repo, "symbolic-ref", "-q", "--short", "HEAD", check=False)
+        now_on = git(repo, "symbolic-ref", "--quiet", "--short", "HEAD", check=False)
         if now_on != branch:
             left, now = branch or "a detached HEAD", now_on or "a detached HEAD"
             log(False, f"Commit failed: it left {left} for {now}")
             return False
-        head = git(repo, "rev-parse", "-q", "--verify", "HEAD", check=False)
+        head = git(repo, "rev-parse", "--quiet", "--verify", "HEAD", check=False)
         if start and head != start and not is_ancestor(repo, start, head):
             short = git(repo, "rev-parse", "--short", start)
             log(

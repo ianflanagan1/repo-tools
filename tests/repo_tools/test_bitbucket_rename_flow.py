@@ -29,7 +29,7 @@ def stored(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
 @pytest.fixture
 def clone(tmp_path: Path, bitbucket) -> Path:
     bitbucket.repos["team/old"] = {"full_name": "team/old", "is_private": False}
-    git(tmp_path, "init", "-q", "-b", "main")
+    git(tmp_path, "init", "--quiet", "--initial-branch", "main")
     git(tmp_path, "remote", "add", "origin", "git@bitbucket.org:team/old.git")
     return tmp_path
 

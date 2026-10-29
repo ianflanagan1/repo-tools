@@ -271,7 +271,7 @@ In each:
 
 | Problem | Fix |
 |---|---|
-| 📝 uncommitted files | Claude Code's `/ianf-commit` skill, run headless (`claude -p /ianf-commit`) |
+| 📝 uncommitted files | Claude Code's `/ianf-commit` skill, run headless (`claude --print /ianf-commit`) |
 | 🔌 no remote | `github publish`, so public and waiting for CI unless `--no-ci-wait` |
 | 📥 behind | fast-forwarded to the upstream, whether the branch is checked out or not; with local integration, a trunk checked out here with commits of its own has them rebased onto the upstream |
 | 🔄 behind its base | rebased onto it, or with `pr-merge` integration the base merged in; one that stops at a conflict is undone |

@@ -53,14 +53,14 @@ def project(tmp_path: Path) -> Path:
     project = tmp_path / "thing"
     remote = tmp_path / "remote.git"
     project.mkdir()
-    git(tmp_path, "init", "-q", "--bare", str(remote))
-    git(project, "init", "-q", "-b", "main")
+    git(tmp_path, "init", "--quiet", "--bare", str(remote))
+    git(project, "init", "--quiet", "--initial-branch", "main")
     git(project, "config", "user.name", "t")
     git(project, "config", "user.email", "t@t")
     git(project, "config", f"url.{remote}.insteadOf", "git@github.com:me/thing.git")
     (project / "composer.json").write_text('{"description": "A thing"}')
-    git(project, "add", "-A")
-    git(project, "commit", "-qm", "init")
+    git(project, "add", "--all")
+    git(project, "commit", "--quiet", "--message", "init")
     git(project, "tag", "v1.0.0")
     return project
 
@@ -109,7 +109,7 @@ def test_publishing_again_has_nothing_to_do(github, project):
 def test_a_new_commit_is_pushed_on_publishing_again(github, project):
     publish(project, "public", None, model=None)
     outcome.reset()
-    git(project, "commit", "-q", "--allow-empty", "-m", "more")
+    git(project, "commit", "--quiet", "--allow-empty", "--message", "more")
     assert isinstance(publish(project, "public", None, model=None), Done)
     assert outcome.changes() == ["Pushed main"]
 
@@ -147,8 +147,8 @@ def undescribed(project: Path) -> Path:
     """The project, with no description in its manifest."""
     (project / "composer.json").write_text("{}")
     (project / "README.md").write_text("# Thing\nSorts socks.\n")
-    git(project, "add", "-A")
-    git(project, "commit", "-qm", "undescribe")
+    git(project, "add", "--all")
+    git(project, "commit", "--quiet", "--message", "undescribe")
     return project
 
 
@@ -205,8 +205,8 @@ def ci_waits(project: Path, monkeypatch: pytest.MonkeyPatch) -> list[str]:
     workflows = project / ".github" / "workflows"
     workflows.mkdir(parents=True)
     (workflows / "ci.yml").write_text("on: push\n")
-    git(project, "add", "-A")
-    git(project, "commit", "-qm", "ci")
+    git(project, "add", "--all")
+    git(project, "commit", "--quiet", "--message", "ci")
     waits: list[str] = []
     monkeypatch.setattr(publish_module, "_wait_for_ci", lambda repo, commit: waits.append(repo))
     return waits

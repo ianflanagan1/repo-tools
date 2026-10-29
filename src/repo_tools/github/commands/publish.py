@@ -101,7 +101,7 @@ def publish(
         outcome.changed(f"Added origin {repo}")
 
     # 3. Push
-    if clone.push(*git, "push", "--porcelain", "-u", "origin", branch):
+    if clone.push(*git, "push", "--porcelain", "--set-upstream", "origin", branch):
         outcome.changed(f"Pushed {branch}")
     if clone.push(*git, "push", "--porcelain", "origin", "--tags"):
         outcome.changed("Pushed tags")

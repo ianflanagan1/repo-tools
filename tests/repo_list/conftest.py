@@ -58,7 +58,7 @@ class Projects:
         """A linked worktree of repo under the root, added with args, such as --detach or
         -b feature."""
         path = self.root / name
-        git("-C", repo, "worktree", "add", "-q", *args, path)
+        git("-C", repo, "worktree", "add", "--quiet", *args, path)
         return path
 
     @staticmethod
@@ -81,7 +81,7 @@ class Projects:
     def local_repo(self, name: str) -> Path:
         """A repository under the root with one commit and no remote."""
         repo = self.root / name
-        git("init", "-q", repo)
+        git("init", "--quiet", repo)
         if self.next_integration:
             (repo / ".config").mkdir()
             settings = f'version = 1\nintegration = "{self.next_integration}"\n'
@@ -93,9 +93,9 @@ class Projects:
         """A repository under the root with one commit, pushed to its own bare origin."""
         repo = self.local_repo(name)
         origin = self.origin(repo)
-        git("init", "-q", "--bare", origin)
+        git("init", "--quiet", "--bare", origin)
         git("-C", repo, "remote", "add", "origin", origin)
-        git("-C", repo, "push", "-qu", "origin", "main")
+        git("-C", repo, "push", "--quiet", "--set-upstream", "origin", "main")
         return repo
 
     def origin(self, repo: Path) -> Path:
@@ -104,35 +104,35 @@ class Projects:
     def push_from_elsewhere(self, repo: Path) -> None:
         """Push a new commit to the repo's origin from another clone."""
         elsewhere = self.remotes.parent / "elsewhere"
-        git("clone", "-q", self.origin(repo), elsewhere)
+        git("clone", "--quiet", self.origin(repo), elsewhere)
         self.commit(elsewhere, "ahead")
-        git("-C", elsewhere, "push", "-q")
+        git("-C", elsewhere, "push", "--quiet")
 
     def package(self, name: str, vendor: str = "me") -> Path:
         """A pushed repository whose composer.json names it vendor/name."""
         repo = self.pushed_repo(name)
         (repo / "composer.json").write_text(json.dumps({"name": f"{vendor}/{name}"}))
-        git("-C", repo, "add", "-A")
-        git("-C", repo, "commit", "-qm", "composer.json")
-        git("-C", repo, "push", "-q")
+        git("-C", repo, "add", "--all")
+        git("-C", repo, "commit", "--quiet", "--message", "composer.json")
+        git("-C", repo, "push", "--quiet")
         return repo
 
     def npm_package(self, name: str, manifest: dict) -> Path:
         """A pushed repository whose package.json is manifest."""
         repo = self.pushed_repo(name)
         (repo / "package.json").write_text(json.dumps(manifest))
-        git("-C", repo, "add", "-A")
-        git("-C", repo, "commit", "-qm", "package.json")
-        git("-C", repo, "push", "-q")
+        git("-C", repo, "add", "--all")
+        git("-C", repo, "commit", "--quiet", "--message", "package.json")
+        git("-C", repo, "push", "--quiet")
         return repo
 
     def python_project(self, name: str, pyproject: str) -> Path:
         """A pushed repository whose pyproject.toml is pyproject."""
         repo = self.pushed_repo(name)
         (repo / "pyproject.toml").write_text(pyproject)
-        git("-C", repo, "add", "-A")
-        git("-C", repo, "commit", "-qm", "pyproject.toml")
-        git("-C", repo, "push", "-q")
+        git("-C", repo, "add", "--all")
+        git("-C", repo, "commit", "--quiet", "--message", "pyproject.toml")
+        git("-C", repo, "push", "--quiet")
         return repo
 
     @staticmethod
@@ -150,8 +150,8 @@ class Projects:
         """Add a line to the repo's file f and commit it."""
         with open(repo / "f", "a") as f:
             f.write(message + "\n")
-        git("-C", repo, "add", "-A")
-        git("-C", repo, "commit", "-qm", message)
+        git("-C", repo, "add", "--all")
+        git("-C", repo, "commit", "--quiet", "--message", message)
 
 
 @pytest.fixture(autouse=True)

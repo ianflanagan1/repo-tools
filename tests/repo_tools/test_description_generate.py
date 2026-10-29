@@ -32,12 +32,12 @@ def git(directory: Path, *args: str) -> None:
 
 @pytest.fixture
 def project(tmp_path: Path) -> Path:
-    git(tmp_path, "init", "-q", "-b", "main")
+    git(tmp_path, "init", "--quiet", "--initial-branch", "main")
     (tmp_path / "README.md").write_text("# Thing\nSorts socks.\n")
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "sort.py").write_text("")
     (tmp_path / "src" / "README.md").write_text("Nested readme")
-    git(tmp_path, "add", "-A")
+    git(tmp_path, "add", "--all")
     return tmp_path
 
 
@@ -70,7 +70,7 @@ def test_a_reply_over_the_limit_gives_no_description(project):
 
 
 def test_a_repository_with_no_tracked_files_is_not_sent_to_the_model(tmp_path: Path):
-    git(tmp_path, "init", "-q", "-b", "main")
+    git(tmp_path, "init", "--quiet", "--initial-branch", "main")
     model = Model("Anything.")
     assert generate(tmp_path, "thing", model, 350) is None
     assert model.prompts == []

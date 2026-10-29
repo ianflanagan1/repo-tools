@@ -28,7 +28,7 @@ class Init(Plugin):
         return [] if directory.is_repo else [NotARepo()]
 
     def fix(self, directory: Directory, problems: list[Problem], log: Log) -> bool:
-        git(directory.path, "init", "-q")
+        git(directory.path, "init", "--quiet")
         directory.is_repo = True
         log(True, "Initialised a git repository")
         return True
