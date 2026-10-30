@@ -34,7 +34,7 @@ def test_each_integration_is_offered_with_how_its_work_reaches_the_trunk_then_sk
     projects.pushed_repo("a")
     run()
     assert terminal.options == [
-        "local      🏠 here, rebased onto trunk; only trunk pushed",
+        "direct     🏠 here, rebased onto trunk; only trunk pushed",
         "pr-rebase  📏 by pull request, rebased onto trunk",
         "pr-merge   🔀 by pull request, trunk merged in",
         "skip          leave it unset, and ask again next time",
@@ -75,15 +75,15 @@ def test_the_integration_chosen_is_added_to_a_settings_file_keeping_what_is_ther
     a = projects.pushed_repo("a")
     (a / ".config").mkdir()
     (a / SETTINGS).write_text("# Ours.\nversion = 1\n")
-    terminal.answer("local")
+    terminal.answer("direct")
     run()
-    assert (a / SETTINGS).read_text() == '# Ours.\nversion = 1\nintegration = "local"\n'
+    assert (a / SETTINGS).read_text() == '# Ours.\nversion = 1\nintegration = "direct"\n'
 
 
 def test_the_repository_is_then_reported_in_the_integration_chosen(projects, run, terminal):
     projects.integration(None)
     projects.pushed_repo("a")
-    terminal.answer("local")
+    terminal.answer("direct")
     assert run().listing == ["🏠 ❔    a  main  ✘ 📝 1 uncommitted file"]
 
 
@@ -108,10 +108,10 @@ def test_each_repository_with_no_integration_is_asked_in_turn(projects, run, ter
     projects.integration(None)
     a = projects.pushed_repo("a")
     b = projects.pushed_repo("b")
-    terminal.answer("local", "pr-rebase")
+    terminal.answer("direct", "pr-rebase")
     run()
     assert len(terminal.prompts) == 2
-    assert 'integration = "local"' in (a / SETTINGS).read_text()
+    assert 'integration = "direct"' in (a / SETTINGS).read_text()
     assert 'integration = "pr-rebase"' in (b / SETTINGS).read_text()
 
 
@@ -121,11 +121,11 @@ def test_a_linked_worktree_with_no_integration_has_it_written_in_its_own_copy_on
     projects.integration(None)
     a = projects.pushed_repo("a")
     linked = projects.worktree(a, "a-wt", "-b", "feature")
-    terminal.answer("skip", "local")
+    terminal.answer("skip", "direct")
     run()
     assert terminal.prompts == [
         "a: How and where does work reach the trunk?",
         "a-wt: How and where does work reach the trunk?",
     ]
-    assert 'integration = "local"' in (linked / SETTINGS).read_text()
+    assert 'integration = "direct"' in (linked / SETTINGS).read_text()
     assert not (a / SETTINGS).exists()

@@ -12,8 +12,8 @@
       "const": 1
     },
     "integration": {
-      "description": "How a branch's work reaches the trunk. local: landed on the trunk by hand, and only the trunk pushed. pr-rebase: by pull request, branches rebased onto the trunk. pr-merge: by pull request, the trunk merged into branches.",
-      "enum": ["local", "pr-rebase", "pr-merge"]
+      "description": "How a branch's work reaches the trunk. direct: landed on the trunk by hand, and only the trunk pushed. pr-rebase: by pull request, branches rebased onto the trunk. pr-merge: by pull request, the trunk merged into branches.",
+      "enum": ["direct", "pr-rebase", "pr-merge"]
     },
     "skip-fix": {
       "description": "Whether repo-fix leaves the worktree alone, while repo-list still reports what needs attention. False when left out.",

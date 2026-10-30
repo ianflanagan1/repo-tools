@@ -78,7 +78,7 @@ def test_a_linked_worktree_whose_own_integration_differs_shows_it(projects, run)
 
 
 @pytest.mark.parametrize(
-    ("integration", "icon"), [("local", "🏠"), ("pr-rebase", "📏"), ("pr-merge", "🔀")]
+    ("integration", "icon"), [("direct", "🏠"), ("pr-rebase", "📏"), ("pr-merge", "🔀")]
 )
 def test_each_integration_shows_its_icon(projects, run, integration, icon):
     projects.integration(integration)

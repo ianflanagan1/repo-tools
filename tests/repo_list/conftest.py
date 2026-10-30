@@ -4,7 +4,7 @@ Every test starts with HOME pointed inside the test's temporary directory, so no
 is read, and an empty `~/projects`, `projects.root`, to be searched. Tests run from outside it.
 Bare remotes go in `projects.remotes`, outside the searched directory. The project's config.toml is
 `projects.config`, naming the Packagist vendor `me` and the npm scope `@me`. Each repository
-made sets its integration, local, in a committed .config/ianf-repo-tools.toml;
+made sets its integration, direct, in a committed .config/ianf-repo-tools.toml;
 `projects.integration` sets another, or none, for the repositories made after it. Packagist and npm
 are faked: see `packagist` and `npm`. So is the terminal a choice is made on: with no answers
 given to `terminal`, there's none, as when an agent runs the command.
@@ -45,7 +45,7 @@ class Projects:
         self.remotes = tmp_path / "remotes"
         self.config = tmp_path / "config.toml"
         self.config.write_text(CONFIG)
-        self.next_integration: str | None = "local"
+        self.next_integration: str | None = "direct"
         self.root.mkdir()
         self.remotes.mkdir()
 
@@ -109,22 +109,36 @@ class Projects:
         git("-C", elsewhere, "push", "--quiet")
 
     def package(self, name: str, vendor: str = "me") -> Path:
-        """A pushed repository whose composer.json names it vendor/name."""
+        """A pushed repository whose composer.json names it vendor/name, released as v1.0.0."""
         repo = self.pushed_repo(name)
         (repo / "composer.json").write_text(json.dumps({"name": f"{vendor}/{name}"}))
         git("-C", repo, "add", "--all")
         git("-C", repo, "commit", "--quiet", "--message", "composer.json")
         git("-C", repo, "push", "--quiet")
+        self.tag(repo, "v1.0.0")
         return repo
 
     def npm_package(self, name: str, manifest: dict) -> Path:
-        """A pushed repository whose package.json is manifest."""
+        """A pushed repository whose package.json is manifest, released as v1.0.0."""
         repo = self.pushed_repo(name)
         (repo / "package.json").write_text(json.dumps(manifest))
         git("-C", repo, "add", "--all")
         git("-C", repo, "commit", "--quiet", "--message", "package.json")
         git("-C", repo, "push", "--quiet")
+        self.tag(repo, "v1.0.0")
         return repo
+
+    @staticmethod
+    def tag(repo: Path, version: str) -> None:
+        """Tags HEAD as version and pushes the tag."""
+        git("-C", repo, "tag", version)
+        git("-C", repo, "push", "--quiet", "origin", version)
+
+    @staticmethod
+    def untag(repo: Path, version: str) -> None:
+        """Deletes the version tag, here and on origin, as if it were never released."""
+        git("-C", repo, "tag", "--delete", version)
+        git("-C", repo, "push", "--quiet", "--delete", "origin", version)
 
     def python_project(self, name: str, pyproject: str) -> Path:
         """A pushed repository whose pyproject.toml is pyproject."""

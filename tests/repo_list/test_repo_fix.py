@@ -12,6 +12,7 @@ from cli_kit.models import claude_code
 
 from repo_list import fix
 from repo_list.plugins import github, lock, npm, packagist
+from repo_list.plugins import release as release_plugin
 
 COMMITS = """git add --all && git commit --quiet --message "Fake commit" \
 && echo '{"result": "✅ Committed."}'"""
@@ -25,6 +26,10 @@ PUBLISHES = """git init --quiet --bare "$REMOTE" && git -C "$2" remote add origi
 && git -C "$2" push --quiet --set-upstream origin HEAD && echo 'Created me/thing (public)' \
 && echo '✅ Published.' && echo 'https://github.com/me/thing'"""
 REFUSES = """echo '⚠️ Not today.' >&2; exit 1"""
+# The fake release tags HEAD as v1.0.1, as the next patch version after v1.0.0, and pushes it.
+RELEASES = """git -C "$2" tag v1.0.1 && git -C "$2" push --quiet origin v1.0.1 \
+&& echo 'Tagged HEAD as v1.0.1' && echo 'Pushed v1.0.1' && echo '✅ Released v1.0.1.'"""
+GITHUB = f"""case "$1" in release) {RELEASES} ;; *) {PUBLISHES} ;; esac"""
 
 # The fake packagist changes what the fake Packagist lacks, in the file conftest's packagist reads.
 PACKAGIST = """python3 - "$@" <<'EOF'
@@ -97,7 +102,9 @@ class Fakes:
         self.npm_state = tmp_path / "npm.json"
         self.monkeypatch = monkeypatch
         self.claude(COMMITS)
-        self.github(PUBLISHES)
+        self.github(GITHUB)
+        # Every origin is a path here, so it's released as if it were on GitHub.
+        monkeypatch.setattr(release_plugin, "command_for", lambda url: github.GITHUB)
         self.packagist(PACKAGIST)
         self.npmjs(NPMJS)
         self.devbox(UV)
@@ -407,7 +414,7 @@ def test_branches_behind_their_upstream_are_fast_forwarded_whether_checked_out_o
     assert (a / "f").read_text() == "init\nahead\n"
 
 
-def test_with_local_integration_a_trunk_that_has_diverged_from_its_upstream_is_rebased_onto_it(
+def test_with_direct_integration_a_trunk_that_has_diverged_from_its_upstream_is_rebased_onto_it(
     projects, repo_fix
 ):
     a = projects.pushed_repo("a")
@@ -527,7 +534,7 @@ def test_the_trunk_is_updated_before_a_worktree_is_rebased_onto_it(projects, fak
     assert subjects(wt) == ["init", "ahead", "wt work"]
 
 
-def test_with_local_integration_work_on_another_branch_is_never_pushed(projects, fakes, repo_fix):
+def test_with_direct_integration_work_on_another_branch_is_never_pushed(projects, fakes, repo_fix):
     a = projects.pushed_repo("a")
     wt = projects.worktree(a, "a-wt", "-b", "feature")
     projects.commit(wt, "feature work")
@@ -553,7 +560,7 @@ def test_a_worktree_is_not_caught_up_with_a_trunk_that_failed_to_update(projects
     assert subjects(wt) == ["init"]
 
 
-def test_a_worktree_whose_catching_up_would_conflict_is_left_for_you(projects, fakes, repo_fix):
+def test_a_worktree_whose_catching_up_conflicts_is_left_as_it_was(projects, fakes, repo_fix):
     a = projects.pushed_repo("a")
     wt = projects.worktree(a, "a-wt", "-b", "feature")
     projects.commit(wt, "feature work")
@@ -562,8 +569,28 @@ def test_a_worktree_whose_catching_up_would_conflict_is_left_for_you(projects, f
     result = repo_fix()
     assert result.progress == [
         "a-wt",
-        "  ✘ Not catching up with main: it would conflict, which is for you",
+        "  ✘ Rebase onto main stopped at a conflict, so it was undone",
     ]
+    assert subjects(wt) == ["init", "feature work"]
+    assert git(wt, "status", "--porcelain") == ""
+
+
+def test_a_rebase_that_fails_without_a_conflict_is_reported_as_failing(projects, repo_fix):
+    a = projects.pushed_repo("a")
+    projects.push_from_elsewhere(a)
+    (a / "g").write_text("local\n")
+    git(a, "add", "g")
+    git(a, "commit", "--quiet", "--message", "local")
+    hook = a / ".git" / "hooks" / "pre-rebase"
+    hook.write_text("#!/bin/sh\necho refused by the hook >&2\nexit 1\n")
+    hook.chmod(0o755)
+    result = repo_fix()
+    assert result.progress[:3] == [
+        "a",
+        "  ✘ Rebase main onto origin/main failed:",
+        "    refused by the hook",
+    ]
+    assert subjects(a) == ["init", "local"]
 
 
 def test_with_pr_rebase_integration_a_branch_is_rebased_on_the_remote_trunk_and_force_pushed(
@@ -631,7 +658,7 @@ def test_a_repository_given_an_integration_when_asked_is_fixed_in_that_integrati
     projects.integration(None)
     a = projects.pushed_repo("a")
     projects.commit(a, "local")
-    terminal.answer("local")
+    terminal.answer("direct")
     result = repo_fix()
     assert "  ✔ Pushed main to origin" in result.progress
     assert "local" in subjects(projects.origin(a))
@@ -663,7 +690,7 @@ def test_the_claude_code_session_running_repo_fix_does_not_stop_it(
 def test_a_repository_whose_settings_file_sets_skip_fix_is_left_alone(projects, fakes, repo_fix):
     a = projects.pushed_repo("a")
     (a / ".config" / "ianf-repo-tools.toml").write_text(
-        'version = 1\nintegration = "local"\nskip-fix = true\n'
+        'version = 1\nintegration = "direct"\nskip-fix = true\n'
     )
     result = repo_fix()
     assert fakes.calls("claude") == []
@@ -676,7 +703,7 @@ def test_a_repository_whose_settings_file_sets_skip_fix_is_left_alone(projects, 
 def test_a_skip_fix_set_to_false_is_fixed(projects, fakes, repo_fix):
     a = projects.pushed_repo("a")
     (a / ".config" / "ianf-repo-tools.toml").write_text(
-        'version = 1\nintegration = "local"\nskip-fix = false\n'
+        'version = 1\nintegration = "direct"\nskip-fix = false\n'
     )
     repo_fix()
     assert subjects(a) == ["init", "Fake commit"]
@@ -786,14 +813,18 @@ def test_a_package_packagist_is_up_to_date_on_is_left_alone(projects, packagist,
     assert fakes.calls("packagist") == []
 
 
-def test_packagist_is_checked_after_pushing_so_it_is_compared_with_what_was_pushed(
+def test_packagist_is_checked_after_pushing_and_releasing_so_it_is_compared_with_what_was_released(
     projects, packagist, fakes, repo_fix
 ):
     a = projects.package("a")
     projects.commit(a, "local")
     result = repo_fix("--packagist")
-    assert result.progress[:2] == ["a", "  ✔ Pushed main to origin"]
-    assert result.progress[2:4] == [
+    assert result.progress[:3] == [
+        "a",
+        "  ✔ Pushed main to origin",
+        "  … Running `github release patch`",
+    ]
+    assert result.progress[6:8] == [
         "  … Running `packagist publish`",
         "  ✔ Published on Packagist:",
     ]
@@ -1039,6 +1070,346 @@ def test_a_dependant_is_checked_again_once_a_repository_it_pins_is_fixed(project
         "a",
         "  … Running `uv lock --upgrade`",
     ]
+
+
+# --- Releasing
+
+
+def released_package(projects, packagist, name: str) -> Path:
+    """A package of your vendor's that Packagist is up to date on, released as v1.0.0, with a
+    commit since that's on no remote yet."""
+    repo = projects.package(name)
+    packagist.has(f"me/{name}")
+    projects.commit(repo, "work")
+    return repo
+
+
+def test_a_package_with_commits_since_its_latest_version_is_released_as_the_next_patch_once_pushed(
+    projects, packagist, fakes, repo_fix
+):
+    a = released_package(projects, packagist, "a")
+    result = repo_fix("--packagist")
+    assert result.progress == [
+        "a",
+        "  ✔ Pushed main to origin",
+        "  … Running `github release patch`",
+        "  ✔ Released:",
+        "    Tagged HEAD as v1.0.1",
+        "    Pushed v1.0.1",
+    ]
+    assert [call[1:] for call in fakes.calls("github")] == [["release", str(a), "patch"]]
+    assert "refs/tags/v1.0.1" in git(a, "ls-remote", "--tags", "origin")
+    assert (result.summary, result.status) == ("✔ All 1 clean", 0)
+
+
+def test_the_packages_flag_releases_packages_of_every_kind(projects, npm, fakes, repo_fix):
+    a = projects.npm_package("a", {"name": "@me/a"})
+    npm.has("@me/a", lacking=[])
+    projects.commit(a, "work")
+    repo_fix("--packages")
+    assert [call[1:] for call in fakes.calls("github")] == [["release", str(a), "patch"]]
+
+
+def test_commits_that_change_lock_files_alone_are_not_released(
+    projects, packagist, fakes, repo_fix
+):
+    a = projects.package("a")
+    packagist.has("me/a")
+    (a / "composer.lock").write_text("{}\n")
+    git(a, "add", "composer.lock")
+    git(a, "commit", "--quiet", "--message", "Lock")
+    result = repo_fix("--packagist")
+    assert result.progress == ["a", "  ✔ Pushed main to origin"]
+    assert fakes.calls("github") == []
+
+
+def test_a_package_never_released_is_released_as_its_first_version(
+    projects, packagist, fakes, repo_fix
+):
+    a = projects.package("a")
+    projects.untag(a, "v1.0.0")
+    packagist.has("me/a")
+    result = repo_fix("--packagist")
+    assert result.progress[:3] == ["a", "  … Running `github release patch`", "  ✔ Released:"]
+    assert [call[1:] for call in fakes.calls("github")] == [["release", str(a), "patch"]]
+
+
+def test_a_package_new_to_npm_is_released_before_it_is_published_there(projects, fakes, repo_fix):
+    a = projects.npm_package("a", {"name": "@me/a"})
+    projects.untag(a, "v1.0.0")
+    result = repo_fix("--npm")
+    assert result.progress == [
+        "a",
+        "  … Running `github release patch`",
+        "  ✔ Released:",
+        "    Tagged HEAD as v1.0.1",
+        "    Pushed v1.0.1",
+        "  … Running `npmjs publish`, which asks here for npm's one-time passwords",
+        "  ✔ Published on npm",
+        "  … Running `npmjs wait`, which waits until npm has every version tag",
+    ]
+
+
+def test_without_a_package_flag_nothing_is_released(projects, packagist, fakes, repo_fix):
+    released_package(projects, packagist, "a")
+    result = repo_fix()
+    assert result.progress == ["a", "  ✔ Pushed main to origin"]
+    assert fakes.calls("github") == []
+
+
+def test_with_pr_integration_nothing_is_released(projects, packagist, fakes, repo_fix):
+    projects.integration("pr-rebase")
+    a = projects.package("a")
+    packagist.has("me/a")
+    projects.push_from_elsewhere(a)
+    repo_fix("--packagist")
+    assert fakes.calls("github") == []
+
+
+def test_a_failed_release_is_reported_with_what_it_said_and_the_registry_is_not_told(
+    projects, packagist, fakes, repo_fix
+):
+    released_package(projects, packagist, "a")
+    packagist.has("me/a", lacking=["main"])
+    fakes.github(REFUSES)
+    result = repo_fix("--packagist")
+    assert result.progress == [
+        "a",
+        "  ✔ Pushed main to origin",
+        "  … Running `github release patch`",
+        "  ✘ Release failed:",
+        "    ⚠️ Not today.",
+    ]
+    assert fakes.calls("packagist") == []
+    assert any("🔖 1 commit since v1.0.0" in line for line in result.listing)
+
+
+# --- Upgrading dependants
+
+# The fake composer locks every package at v1.0.1.
+COMPOSER_UPDATE = """python3 - <<'EOF'
+import json
+lock = json.load(open("composer.lock"))
+for package in lock["packages"]:
+    package["version"] = "v1.0.1"
+json.dump(lock, open("composer.lock", "w"))
+EOF"""
+
+
+def composer_app(projects, name: str, kit_at: str) -> Path:
+    """A pushed Composer project, with a devbox.json, that requires me/kit and locks it at
+    kit_at."""
+    repo = projects.pushed_repo(name)
+    manifest = {"name": f"me/{name}", "type": "project", "require": {"me/kit": "^1.0"}}
+    (repo / "composer.json").write_text(json.dumps(manifest))
+    lock_file = {"packages": [{"name": "me/kit", "version": kit_at}]}
+    (repo / "composer.lock").write_text(json.dumps(lock_file))
+    (repo / "devbox.json").write_text("{}\n")
+    git(repo, "add", "--all")
+    git(repo, "commit", "--quiet", "--message", "Require me/kit")
+    git(repo, "push", "--quiet")
+    return repo
+
+
+def test_a_package_just_released_is_upgraded_in_the_lock_files_of_the_projects_that_pin_it(
+    projects, packagist, fakes, repo_fix
+):
+    released_package(projects, packagist, "kit")
+    app = composer_app(projects, "app", "v1.0.0")
+    fakes.devbox(COMPOSER_UPDATE)
+    result = repo_fix("--packagist")
+    assert result.progress[:6] == [
+        "kit",
+        "  ✔ Pushed main to origin",
+        "  … Running `github release patch`",
+        "  ✔ Released:",
+        "    Tagged HEAD as v1.0.1",
+        "    Pushed v1.0.1",
+    ]
+    assert result.progress[6:8] == [
+        "app",
+        "  … Running `composer update --no-interaction --no-install --no-scripts me/kit`",
+    ]
+    assert re.fullmatch(r"  ✔ Committed \w+ Upgrade me/kit:", result.progress[8])
+    assert result.progress[9:] == ["    me/kit v1.0.0 -> v1.0.1", "  ✔ Pushed main to origin"]
+    assert git(app, "log", "-1", "--format=%B", "origin/main") == (
+        "Upgrade me/kit\n\nme/kit v1.0.0 -> v1.0.1"
+    )
+    assert git(app, "show", "--name-only", "--format=", "HEAD") == "composer.lock"
+    assert (result.summary, result.status) == ("✔ All 2 clean", 0)
+
+
+def test_a_library_s_upgrade_of_a_package_of_yours_is_not_itself_released(
+    projects, packagist, fakes, repo_fix
+):
+    kit = projects.package("kit")
+    packagist.has("me/kit")
+    projects.tag(kit, "v1.0.1")
+    lib = composer_app(projects, "lib", "v1.0.0")
+    (lib / "composer.json").write_text(json.dumps({"name": "me/lib", "require": {"me/kit": "^1"}}))
+    git(lib, "commit", "--quiet", "--all", "--message", "A library")
+    git(lib, "push", "--quiet")
+    projects.tag(lib, "v1.0.0")
+    packagist.has("me/lib")
+    fakes.devbox(COMPOSER_UPDATE)
+    repo_fix("--packagist")
+    assert subjects(lib)[-1] == "Upgrade me/kit"
+    assert fakes.calls("github") == []
+
+
+def test_a_lock_file_its_tool_leaves_as_it_was_is_reported_and_nothing_is_committed(
+    projects, packagist, fakes, repo_fix
+):
+    kit = projects.package("kit")
+    packagist.has("me/kit")
+    projects.tag(kit, "v1.0.1")
+    app = composer_app(projects, "app", "v1.0.0")
+    fakes.devbox("true")
+    result = repo_fix("--packagist")
+    assert result.progress == [
+        "app",
+        "  … Running `composer update --no-interaction --no-install --no-scripts me/kit`",
+        "  ✘ composer left composer.lock as it was; its constraint may exclude the latest:",
+        "    me/kit v1.0.0 -> v1.0.1",
+    ]
+    assert subjects(app)[-1] == "Require me/kit"
+    assert any("🔗 composer.lock behind on me/kit" in line for line in result.listing)
+
+
+def test_a_lock_file_without_a_devbox_to_upgrade_it_in_is_reported(
+    projects, packagist, fakes, repo_fix
+):
+    kit = projects.package("kit")
+    packagist.has("me/kit")
+    projects.tag(kit, "v1.0.1")
+    app = composer_app(projects, "app", "v1.0.0")
+    git(app, "rm", "--quiet", "devbox.json")
+    git(app, "commit", "--quiet", "--message", "No devbox")
+    git(app, "push", "--quiet")
+    result = repo_fix("--packagist")
+    assert result.progress == [
+        "app",
+        "  ✘ Not upgrading composer.lock: there's no devbox.json to run composer in",
+    ]
+    assert fakes.calls("devbox") == []
+
+
+def test_a_lock_file_holding_the_latest_of_your_packages_is_left_alone(
+    projects, packagist, fakes, repo_fix
+):
+    kit = projects.package("kit")
+    packagist.has("me/kit")
+    projects.tag(kit, "v1.0.1")
+    composer_app(projects, "app", "v1.0.1")
+    result = repo_fix("--packagist")
+    assert (result.progress, fakes.calls("devbox")) == ([], [])
+
+
+def test_without_a_package_flag_no_lock_file_is_upgraded_to_your_packages(
+    projects, packagist, fakes, repo_fix
+):
+    kit = projects.package("kit")
+    projects.tag(kit, "v1.0.1")
+    composer_app(projects, "app", "v1.0.0")
+    result = repo_fix()
+    assert (result.progress, fakes.calls("devbox")) == ([], [])
+
+
+# The fake uv locks kit at the commit its origin's main is at, and finds nothing else to upgrade.
+UV_UPGRADE_PACKAGE = """case "$*" in *--upgrade-package*) python3 - <<'EOF'
+import os, re, subprocess
+origin = os.environ["KIT_ORIGIN"]
+head = subprocess.run(
+    ["git", "--git-dir", origin, "rev-parse", "main"], capture_output=True, text=True, check=True
+).stdout.strip()
+text = open("uv.lock").read()
+open("uv.lock", "w").write(re.sub(r"#\\w+", "#" + head, text))
+EOF
+;; esac"""
+
+
+def test_a_python_package_pushed_is_upgraded_to_its_trunk_in_the_uv_locks_that_pin_it(
+    projects, fakes, repo_fix, monkeypatch
+):
+    kit = projects.python_project("kit", python_project("kit"))
+    app = projects.python_project("app", python_project("app", "kit"))
+    old = git(kit, "rev-parse", "HEAD")
+    url = "https://example.com/kit?branch=main#" + old
+    (app / "uv.lock").write_text(
+        f'version = 1\n\n[[package]]\nname = "kit"\nsource = {{ git = "{url}" }}\n'
+    )
+    (app / "devbox.json").write_text("{}\n")
+    git(app, "add", "--all")
+    git(app, "commit", "--quiet", "--message", "Lock")
+    git(app, "push", "--quiet")
+    projects.commit(kit, "work")
+    new = git(kit, "rev-parse", "HEAD")
+    monkeypatch.setenv("KIT_ORIGIN", str(projects.origin(kit)))
+    fakes.devbox(UV_UPGRADE_PACKAGE)
+    result = repo_fix("--python")
+    assert result.progress[:4] == [
+        "kit",
+        "  ✔ Pushed main to origin",
+        "app",
+        "  … Running `uv lock --upgrade-package kit`",
+    ]
+    assert re.fullmatch(r"  ✔ Committed \w+ Upgrade kit:", result.progress[4])
+    assert result.progress[5:] == [f"    kit {old[:7]} -> {new[:7]}", "  ✔ Pushed main to origin"]
+    assert fakes.calls("github") == []
+    assert (result.summary, result.status) == ("✔ All 2 clean", 0)
+
+
+# The fake go get requires every module at v1.0.1, and records its checksum in a new go.sum.
+GO_GET = """python3 - <<'EOF'
+text = open("go.mod").read()
+open("go.mod", "w").write(text.replace(" v1.0.0", " v1.0.1"))
+open("go.sum", "w").write("github.com/me/kit v1.0.1 h1:sum=\\n")
+EOF"""
+
+
+def go_module(projects, name: str, go_mod: str) -> Path:
+    """A pushed repository with a devbox.json, whose go.mod is module github.com/me/name followed
+    by go_mod."""
+    repo = projects.pushed_repo(name)
+    (repo / "go.mod").write_text(f"module github.com/me/{name}\n\ngo 1.27\n{go_mod}")
+    (repo / "devbox.json").write_text("{}\n")
+    git(repo, "add", "--all")
+    git(repo, "commit", "--quiet", "--message", "go.mod")
+    git(repo, "push", "--quiet")
+    return repo
+
+
+def test_a_go_module_another_requires_is_released_then_upgraded_in_its_go_mod_and_go_sum(
+    projects, fakes, repo_fix
+):
+    kit = go_module(projects, "kit", "")
+    projects.tag(kit, "v1.0.0")
+    projects.commit(kit, "work")
+    app = go_module(projects, "app", "\nrequire github.com/me/kit v1.0.0\n")
+    fakes.devbox(GO_GET)
+    result = repo_fix("--go")
+    assert result.progress[:6] == [
+        "kit",
+        "  ✔ Pushed main to origin",
+        "  … Running `github release patch`",
+        "  ✔ Released:",
+        "    Tagged HEAD as v1.0.1",
+        "    Pushed v1.0.1",
+    ]
+    assert result.progress[6:8] == [
+        "app",
+        "  … Running `env GOPROXY=direct go get github.com/me/kit@latest`",
+    ]
+    assert re.fullmatch(r"  ✔ Committed \w+ Upgrade github.com/me/kit:", result.progress[8])
+    assert result.progress[9:] == [
+        "    github.com/me/kit v1.0.0 -> v1.0.1",
+        "  ✔ Pushed main to origin",
+    ]
+    assert git(app, "show", "--name-only", "--format=", "origin/main").splitlines() == [
+        "go.mod",
+        "go.sum",
+    ]
+    assert (result.summary, result.status) == ("✔ All 2 clean", 0)
 
 
 # --- Directories that are not repositories

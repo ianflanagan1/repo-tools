@@ -2,7 +2,7 @@
 them level, as the repository's integration says (see repo_list.integration):
 
   📤 commits on no remote, pushed         ⛔ commits on the trunk, where work goes by PR
-  📥 behind the upstream, pulled          🛬 commits not landed on the trunk, with local integration
+  📥 behind the upstream, pulled          🛬 commits not on the trunk, with direct integration
   🔄 HEAD behind its base, caught up      ⚡ HEAD behind its base, conflicting
 
 repo-fix first brings each branch level with its upstream, the trunk first; then catches HEAD up
@@ -31,7 +31,6 @@ from repo_list.integration import (
     Pull,
     Push,
     RebaseOnUpstream,
-    WouldConflict,
     assess_branch,
     assess_head,
     branches_to_check,
@@ -150,7 +149,7 @@ def gather(directory: Directory) -> Facts:
 
 
 def _head(directory: Directory, remotes: list[str]) -> Head | None:
-    """How far HEAD is behind the branch it lands on: the trunk with local integration, and the
+    """How far HEAD is behind the branch it lands on: the trunk with direct integration, and the
     trunk on the remote where work goes by pull request."""
     place = directory.place
     repo = directory.path
@@ -185,7 +184,7 @@ def do_pull(directory: Directory, pull: Pull, upstreams: dict[str, str], log: Lo
         case FastForward(branch, here):
             return fast_forward(directory, branch, here, upstream, log)
         case RebaseOnUpstream(branch):
-            return rebase_on_upstream(directory, branch, upstream, log)
+            return replay(directory, Rebase(upstream, branch), log)
         case Diverged(branch):
             log(False, f"Not syncing {branch}: it has diverged from {upstream}")
             return False
@@ -207,36 +206,9 @@ def fast_forward(directory: Directory, branch: str, here: bool, upstream: str, l
     return False
 
 
-def rebase_on_upstream(directory: Directory, branch: str, upstream: str, log: Log) -> bool:
-    if reason := _not_clean(directory):
-        log(False, f"Not rebasing {branch} onto {upstream}: {reason}")
-        return False
-    if _replay(
-        directory, ["rebase", "--quiet", upstream], "rebase", f"{branch} onto {upstream}", log
-    ):
-        log(True, f"Rebased {branch} onto {upstream}")
-        return True
-    return False
-
-
-def catch_up(directory: Directory, action: CatchUp | WouldConflict, log: Log) -> None:
-    """Brings the base's commits into HEAD, by rebase or merge, leaving HEAD as it was if that
-    stops at a conflict."""
-    match action:
-        case WouldConflict(base):
-            log(False, f"Not catching up with {base}: it would conflict, which is for you")
-        case CatchUp(base, rebase=True):
-            if reason := _not_clean(directory):
-                log(False, f"Not rebasing onto {base}: {reason}")
-            elif _replay(directory, ["rebase", "--quiet", base], "rebase", f"onto {base}", log):
-                log(True, f"Rebased onto {base}")
-        case CatchUp(base, rebase=False):
-            if reason := _not_clean(directory):
-                log(False, f"Not merging {base}: {reason}")
-            elif _replay(directory, ["merge", "--quiet", "--no-edit", base], "merge", base, log):
-                log(True, f"Merged {base}")
-        case _:
-            assert_never(action)
+def catch_up(directory: Directory, action: CatchUp, log: Log) -> None:
+    """Brings the base's commits into HEAD, by rebase or merge."""
+    replay(directory, Rebase(action.base, None) if action.rebase else Merge(action.base), log)
 
 
 def push(directory: Directory, action: Push, upstream: str, log: Log) -> None:
@@ -262,17 +234,74 @@ def push(directory: Directory, action: Push, upstream: str, log: Log) -> None:
         log(False, f"Push of {branch} failed", *result.stderr.strip().splitlines())
 
 
-def _replay(directory: Directory, command: list[str], operation: str, what: str, log: Log) -> bool:
-    """Runs a rebase or merge. One that fails is aborted, leaving HEAD and the files as they
-    were, and logged. Says whether it succeeded."""
+@final
+@dataclass(frozen=True)
+class Rebase:
+    onto: str
+    branch: str | None
+    """The branch checked out, to name in what's logged, or None to leave it unnamed."""
+
+
+@final
+@dataclass(frozen=True)
+class Merge:
+    base: str
+
+
+type Replay = Rebase | Merge
+"""A rebase or merge of HEAD, which brings in another branch's commits."""
+
+
+@final
+@dataclass(frozen=True)
+class _Wording:
+    command: list[str]
+    doing: str
+    """Such as "rebasing onto main", for when it isn't started."""
+    noun: str
+    """Such as "Rebase onto main", for when it fails."""
+    done: str
+
+
+def replay(directory: Directory, action: Replay, log: Log) -> bool:
+    """Rebases or merges HEAD, and says whether it did. Every rebase and merge repo-fix makes goes
+    through here, so that a conflict is handled by _on_conflict wherever it arises."""
     repo = directory.path
-    result = run(repo, *command)
+    wording = _wording(action)
+    if reason := _not_clean(directory):
+        log(False, f"Not {wording.doing}: {reason}")
+        return False
+    result = run(repo, *wording.command)
     if result.returncode == 0:
+        log(True, wording.done)
         return True
-    run(repo, operation, "--abort")
-    noun = "Rebase" if operation == "rebase" else "Merge of"
-    log(False, f"{noun} {what} stopped at a conflict, so it was undone")
+    if in_progress(repo) is None:
+        # It never started, as when a hook refuses it, so there's no conflict to handle.
+        log(False, f"{wording.noun} failed", *result.stderr.strip().splitlines())
+        return False
+    return _on_conflict(directory, action, log)
+
+
+def _on_conflict(directory: Directory, action: Replay, log: Log) -> bool:
+    """Handles a rebase or merge stopped at a conflict, and says whether it was finished. For now
+    it's undone, leaving HEAD and the files as they were, for you."""
+    wording = _wording(action)
+    run(directory.path, wording.command[0], "--abort")
+    log(False, f"{wording.noun} stopped at a conflict, so it was undone")
     return False
+
+
+def _wording(action: Replay) -> _Wording:
+    match action:
+        case Rebase(onto, branch):
+            what = f"{branch} onto {onto}" if branch else f"onto {onto}"
+            command = ["rebase", "--quiet", onto]
+            return _Wording(command, f"rebasing {what}", f"Rebase {what}", f"Rebased {what}")
+        case Merge(base):
+            command = ["merge", "--quiet", "--no-edit", base]
+            return _Wording(command, f"merging {base}", f"Merge of {base}", f"Merged {base}")
+        case _:
+            assert_never(action)
 
 
 def _not_clean(directory: Directory) -> str | None:

@@ -87,7 +87,7 @@ def _set(path: Path, integration: Integration) -> str | None:
 
 def _summary(integration: Integration) -> str:
     match integration:
-        case Integration.LOCAL:
+        case Integration.DIRECT:
             return "here, rebased onto trunk; only trunk pushed"
         case Integration.PR_REBASE:
             return "by pull request, rebased onto trunk"

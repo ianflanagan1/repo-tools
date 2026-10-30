@@ -8,11 +8,14 @@ from repo_tools.packages import (
     ComposerPackage,
     CopierTemplate,
     Ecosystem,
+    GoModule,
     Name,
     NpmPackage,
     PythonPackage,
     discover,
+    go_requires,
     icon,
+    name_of,
     names,
     pinned,
 )
@@ -71,6 +74,46 @@ def test_a_pyproject_nothing_pins_is_no_package_even_with_a_build_backend(tmp_pa
     assert discover(tmp_path, {Name(Ecosystem.NPM, "tools")}) == []
 
 
+GO_MOD = """module github.com/me/kit
+
+go 1.27
+
+tool github.com/me/baseline/cmd/baseline
+
+require github.com/me/ports v0.2.0
+
+require (
+\tgithub.com/me/baseline v0.4.0 // indirect
+\t"github.com/me/quoted" v1.0.0
+\tgithub.com/me/local v0.1.0
+\tgithub.com/me/sibling v0.1.0
+)
+
+replace github.com/me/local => ../local
+
+replace (
+\tgithub.com/me/sibling v0.1.0 => ./sibling
+\tgithub.com/me/ports => github.com/fork/ports v0.2.1
+)
+"""
+
+
+def go_mod(tmp_path: Path, text: str) -> None:
+    (tmp_path / "go.mod").write_text(text)
+
+
+def test_a_go_module_another_project_requires_is_a_go_module_package(tmp_path: Path):
+    go_mod(tmp_path, "module github.com/me/kit\n\ngo 1.27\n")
+    assert discover(tmp_path, {Name(Ecosystem.GO, "github.com/me/kit")}) == [
+        GoModule("github.com/me/kit")
+    ]
+
+
+def test_a_go_module_nothing_requires_is_no_package(tmp_path: Path):
+    go_mod(tmp_path, "module github.com/me/app\n")
+    assert discover(tmp_path, {Name(Ecosystem.PYTHON, "github.com/me/app")}) == []
+
+
 def test_a_claude_plugin_manifest_is_a_claude_plugin(tmp_path: Path):
     write_json(tmp_path / ".claude-plugin" / "plugin.json", {"name": "static-checks"})
     assert discover(tmp_path, NONE_PINNED) == [ClaudePlugin("static-checks")]
@@ -113,10 +156,12 @@ def test_a_project_is_called_by_the_name_in_each_of_its_manifests(tmp_path: Path
     write_json(tmp_path / "composer.json", {"name": "Me/Thing", "type": "project"})
     write_json(tmp_path / "package.json", {"name": "@me/thing", "private": True})
     (tmp_path / "pyproject.toml").write_text('[project]\nname = "My.Thing"\n')
+    go_mod(tmp_path, "module github.com/me/thing // the module\n")
     assert names(tmp_path) == {
         Name(Ecosystem.COMPOSER, "me/thing"),
         Name(Ecosystem.NPM, "@me/thing"),
         Name(Ecosystem.PYTHON, "my-thing"),
+        Name(Ecosystem.GO, "github.com/me/thing"),
     }
 
 
@@ -217,15 +262,45 @@ def test_an_npm_dependency_read_from_a_path_is_not_pinned(tmp_path: Path, spec: 
     assert pinned(tmp_path) == set()
 
 
+def test_each_go_requirement_is_pinned_unless_replaced_by_a_local_path(tmp_path: Path):
+    go_mod(tmp_path, GO_MOD)
+    assert pinned(tmp_path) == {
+        Name(Ecosystem.GO, f"github.com/me/{n}") for n in ("ports", "baseline", "quoted")
+    }
+
+
+def test_a_go_mod_requires_each_module_at_its_version():
+    assert go_requires(GO_MOD) == {
+        "github.com/me/ports": "v0.2.0",
+        "github.com/me/baseline": "v0.4.0",
+        "github.com/me/quoted": "v1.0.0",
+        "github.com/me/local": "v0.1.0",
+        "github.com/me/sibling": "v0.1.0",
+    }
+
+
 @pytest.mark.parametrize(
     ("package", "expected"),
     [
         (ComposerPackage("me/thing"), "🐘"),
         (NpmPackage("thing"), "🔴"),
         (PythonPackage("thing"), "🐍"),
+        (GoModule("example.com/thing"), "🐹"),
         (ClaudePlugin("thing"), "🧩"),
         (CopierTemplate(), "📋"),
     ],
 )
 def test_each_kind_of_package_has_its_icon(package, expected):
     assert icon(package) == expected
+
+
+def test_a_package_is_named_as_the_projects_that_pin_it_name_it():
+    assert name_of(ComposerPackage("Me/Thing")) == Name(Ecosystem.COMPOSER, "me/thing")
+    assert name_of(NpmPackage("@me/thing")) == Name(Ecosystem.NPM, "@me/thing")
+    assert name_of(PythonPackage("My_Kit")) == Name(Ecosystem.PYTHON, "my-kit")
+    assert name_of(GoModule("github.com/Me/Kit")) == Name(Ecosystem.GO, "github.com/Me/Kit")
+
+
+def test_a_kind_of_package_nothing_pins_has_no_such_name():
+    assert name_of(ClaudePlugin("thing")) is None
+    assert name_of(CopierTemplate()) is None

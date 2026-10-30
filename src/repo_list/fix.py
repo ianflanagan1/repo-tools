@@ -16,29 +16,38 @@ failed. In each:
                          must be clean, on the same branch or detached HEAD, with earlier
                          commits untouched; never on the trunk with PR integration
   🔌 no remote           published with `github publish`, public
-  📥 behind              fast-forwarded to the upstream; with local integration, a trunk checked out
-                         here with commits of its own has them rebased onto it
+  📥 behind              fast-forwarded to the upstream; with direct integration, a trunk checked
+                         out here with commits of its own has them rebased onto it
   🔄 behind its base     rebased onto it, or with pr-merge integration the base merged in
   📤 unpushed            pushed to the upstream, or with no upstream to the only remote
   🔃 no pull request     opened as a draft, with PR integration
-  📌 uv.lock             one that `uv lock --upgrade` would change, on the trunk with local
+  📌 uv.lock             one that `uv lock --upgrade` would change, on the trunk with direct
                          integration: upgraded in the project's devbox, committed alone and pushed
+  🔗 lock file behind    with a package flag, on the trunk with direct integration, one holding a
+                         package of yours from another repository here at less than its latest:
+                         just that package upgraded with composer, npm or uv in the project's
+                         devbox, then the lock file committed alone and pushed
+  🔖 unreleased commits  with a package flag, for a Composer or npm package of yours, on the
+                         trunk with direct integration, once pushed: commits since its latest
+                         version tag that change more than lock files, or a package never
+                         released, are released as the next patch version with `github release`
+                         or `bitbucket release`
   📁 not a repository    with --init only: initialised, committed and published
-  🐘 Packagist           with --packagist only, for a package of your vendor's, once pushed:
+  🐘 Packagist           with --packagist only, for a package of your vendor's, once released:
                          `packagist publish`, then `packagist update`, which waits until
                          Packagist has what was pushed
-  🔴 npm                 with --npm only, for a package of your scope's, once pushed: a
+  🔴 npm                 with --npm only, for a package of your scope's, once released: a
                          package not on npm is published with `npmjs publish`, which asks for
                          one-time passwords; then `npmjs wait` waits until npm has every
                          version tag, which the package's publish workflow publishes
 
 Nothing is forced, except a branch rebased with pr-rebase integration, pushed with a lease. A
-branch both behind and unpushed has diverged, and is left alone, but for the trunk with local
-integration; so are stashes, and HEAD when catching up would conflict. A rebase or merge that
-stops at a conflict is undone. A repository whose commit fails is left there, one whose fetch
-failed is neither pushed nor pulled, and a directory a Claude Code session is busy in is left
-alone, as is one whose .config/ianf-repo-tools.toml sets skip-fix = true. Ends with
-repo-list's report of what's left.
+branch both behind and unpushed has diverged, and is left alone, but for the trunk with direct
+integration; so are stashes. Any rebase or merge that stops at a conflict is undone, which
+is what becomes of HEAD's catching up when it's expected to conflict. A repository whose commit
+fails is left there, one whose fetch failed is neither pushed nor pulled, and a directory a
+Claude Code session is busy in is left alone, as is one whose .config/ianf-repo-tools.toml sets
+skip-fix = true. Ends with repo-list's report of what's left.
 
 Exit status: 0 all clean, 1 something still needs attention, 2 usage error.
 """
@@ -49,7 +58,7 @@ from pathlib import Path
 from cli_kit import cli, devbox, outcome
 from cli_kit.colour import GREEN, GREY, RED, YELLOW, Style
 
-from repo_list import ask_integration, config, dependencies, integration, plugins, report, scan
+from repo_list import ask_integration, dependencies, ecosystems, integration, plugins, report, scan
 from repo_list.plugin import Plugin, Stage
 from repo_list.scan import ConfigInvalid, Directory
 from repo_tools import packages
@@ -69,22 +78,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--no-ci-wait", action="store_true", help="don't wait for CI after publishing"
     )
-    parser.add_argument(
-        "-p",
-        "--packagist",
-        action="store_true",
-        help="publish and update each package of your vendor's on Packagist",
-    )
-    parser.add_argument(
-        "--npm",
-        action="store_true",
-        help="publish each package of your scope's on npm, and wait for its version tags",
+    ecosystems.add_flags(
+        parser,
+        lambda e: (
+            f"release and publish {ecosystems.packages_of(e)}, "
+            "and upgrade it in the projects here that pin it"
+        ),
+        "do so for every kind of package, as each flag above does",
     )
     args = parser.parse_args(argv)
     devbox.use_tools()
-    settings = config.for_command(parser, args.packagist, args.npm)
-    vendor = settings.packagist_vendor if args.packagist else None
-    scope = settings.npm_scope if args.npm else None
+    chosen = ecosystems.chosen(args)
+    settings = ecosystems.settings_for(parser, chosen)
     args.path = args.path or settings.root
     path = Path(args.path).expanduser().resolve()
     if not path.is_dir():
@@ -100,10 +105,12 @@ def main(argv: list[str] | None = None) -> int:
 
     log = Log(Style.for_stream())
     pinned = {d.path: packages.pinned(d.path) for d in directories}
+    every_pinned = set().union(*pinned.values())
     active = plugins.built_in(
-        vendor,
-        scope,
-        set().union(*pinned.values()),
+        chosen,
+        settings,
+        every_pinned,
+        ecosystems.providers((d.path for d in directories), chosen, settings, every_pinned),
         log.begin,
         upgrade_locks=True,
         init=args.init,

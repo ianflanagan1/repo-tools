@@ -21,7 +21,6 @@ from repo_list.integration import (
     Unmerged,
     Unpushed,
     Worktree,
-    WouldConflict,
     assess_branch,
     assess_head,
     branches_to_check,
@@ -32,7 +31,7 @@ from repo_list.integration import (
     plan_pushes,
 )
 
-LOCAL = Integration.LOCAL
+DIRECT = Integration.DIRECT
 PR_INTEGRATIONS = [Integration.PR_REBASE, Integration.PR_MERGE]
 
 
@@ -98,20 +97,20 @@ def test_the_branch_of_a_worktree_that_no_longer_exists_counts_as_checked_out_by
 # --- What a branch's state amounts to, with each integration
 
 
-def test_with_local_integration_the_trunk_reports_commits_to_push_and_to_pull():
-    assert assess_branch(branch(unpushed=2, behind=1), LOCAL, has_remote=True) == [
+def test_with_direct_integration_the_trunk_reports_commits_to_push_and_to_pull():
+    assert assess_branch(branch(unpushed=2, behind=1), DIRECT, has_remote=True) == [
         Unpushed("main", 2),
         BehindUpstream("main", 1),
     ]
 
 
-def test_with_local_integration_another_branch_reports_the_work_not_yet_landed_on_the_trunk():
-    found = assess_branch(branch("feature", unpushed=2, unmerged=2), LOCAL, has_remote=True)
+def test_with_direct_integration_another_branch_reports_the_work_not_yet_landed_on_the_trunk():
+    found = assess_branch(branch("feature", unpushed=2, unmerged=2), DIRECT, has_remote=True)
     assert found == [Unmerged("feature", 2)]
 
 
-def test_with_local_integration_a_branch_fully_landed_on_the_trunk_needs_nothing():
-    assert assess_branch(branch("feature", unpushed=0, unmerged=0), LOCAL, True) == []
+def test_with_direct_integration_a_branch_fully_landed_on_the_trunk_needs_nothing():
+    assert assess_branch(branch("feature", unpushed=0, unmerged=0), DIRECT, True) == []
 
 
 @pytest.mark.parametrize("integration", PR_INTEGRATIONS)
@@ -125,7 +124,7 @@ def test_with_pr_integration_another_branch_reports_commits_to_push_and_to_pull(
     assert found == [Unpushed("feature", 2), BehindUpstream("feature", 1)]
 
 
-@pytest.mark.parametrize("integration", [LOCAL, *PR_INTEGRATIONS])
+@pytest.mark.parametrize("integration", [DIRECT, *PR_INTEGRATIONS])
 def test_without_a_remote_nothing_is_unpushed_as_the_missing_remote_is_reported_instead(
     integration,
 ):
@@ -134,7 +133,7 @@ def test_without_a_remote_nothing_is_unpushed_as_the_missing_remote_is_reported_
     )
 
 
-@pytest.mark.parametrize("integration", [LOCAL, *PR_INTEGRATIONS])
+@pytest.mark.parametrize("integration", [DIRECT, *PR_INTEGRATIONS])
 def test_with_the_trunk_unknown_every_branch_reports_commits_to_push_and_to_pull(integration):
     found = assess_branch(branch("feature", trunk=None, unpushed=1, behind=2), integration, True)
     assert found == [Unpushed("feature", 1), BehindUpstream("feature", 2)]
@@ -145,16 +144,16 @@ def test_with_the_trunk_unknown_every_branch_reports_commits_to_push_and_to_pull
 
 @pytest.mark.parametrize("name", ["feature", None])
 def test_a_head_behind_its_base_is_reported_with_how_far(name):
-    assert assess_head(head(name, behind_base=3), LOCAL) == [BehindBase("main", 3)]
+    assert assess_head(head(name, behind_base=3), DIRECT) == [BehindBase("main", 3)]
 
 
 def test_a_head_whose_catching_up_would_conflict_is_reported_as_conflicting():
-    found = assess_head(head(behind_base=3, conflicts=True), LOCAL)
+    found = assess_head(head(behind_base=3, conflicts=True), DIRECT)
     assert found == [Conflicts("main")]
 
 
 def test_a_head_level_with_its_base_needs_nothing():
-    assert assess_head(head(behind_base=0), LOCAL) == []
+    assert assess_head(head(behind_base=0), DIRECT) == []
 
 
 @pytest.mark.parametrize("integration", PR_INTEGRATIONS)
@@ -172,15 +171,15 @@ def test_with_pr_integration_a_branch_is_caught_up_with_the_trunk_on_the_remote(
 
 
 def test_a_branch_only_behind_its_upstream_is_fast_forwarded():
-    assert plan_pulls([branch(behind=2)], LOCAL) == [FastForward("main", here=True)]
+    assert plan_pulls([branch(behind=2)], DIRECT) == [FastForward("main", here=True)]
 
 
-def test_with_local_integration_a_diverged_trunk_checked_out_here_is_rebased_on_its_upstream():
-    assert plan_pulls([branch(unpushed=1, behind=2)], LOCAL) == [RebaseOnUpstream("main")]
+def test_with_direct_integration_a_diverged_trunk_checked_out_here_is_rebased_on_its_upstream():
+    assert plan_pulls([branch(unpushed=1, behind=2)], DIRECT) == [RebaseOnUpstream("main")]
 
 
-def test_with_local_integration_a_diverged_trunk_checked_out_nowhere_is_left_alone():
-    found = plan_pulls([branch(here=False, unpushed=1, behind=2)], LOCAL)
+def test_with_direct_integration_a_diverged_trunk_checked_out_nowhere_is_left_alone():
+    found = plan_pulls([branch(here=False, unpushed=1, behind=2)], DIRECT)
     assert found == [Diverged("main")]
 
 
@@ -193,14 +192,14 @@ def test_with_pr_integration_a_diverged_branch_is_left_alone(integration):
 
 
 def test_a_branch_level_with_its_upstream_is_not_pulled():
-    assert plan_pulls([branch(unpushed=3)], LOCAL) == []
+    assert plan_pulls([branch(unpushed=3)], DIRECT) == []
 
 
 # --- What repo-fix catches up
 
 
 def test_with_local_and_pr_rebase_integration_head_is_rebased_onto_its_base():
-    assert plan_catch_up(head(behind_base=2), LOCAL) == CatchUp("main", rebase=True)
+    assert plan_catch_up(head(behind_base=2), DIRECT) == CatchUp("main", rebase=True)
     assert plan_catch_up(head(behind_base=2), Integration.PR_REBASE) == CatchUp("main", True)
 
 
@@ -208,20 +207,20 @@ def test_with_pr_merge_integration_the_base_is_merged_into_head():
     assert plan_catch_up(head(behind_base=2), Integration.PR_MERGE) == CatchUp("main", False)
 
 
-def test_a_conflicting_head_is_left_for_you_to_rebase():
-    found = plan_catch_up(head(behind_base=2, conflicts=True), LOCAL)
-    assert found == WouldConflict("main")
+def test_a_head_expected_to_conflict_is_still_caught_up():
+    found = plan_catch_up(head(behind_base=2, conflicts=True), DIRECT)
+    assert found == CatchUp("main", rebase=True)
 
 
 def test_a_head_level_with_its_base_is_not_caught_up():
-    assert plan_catch_up(head(behind_base=0), LOCAL) is None
+    assert plan_catch_up(head(behind_base=0), DIRECT) is None
 
 
 # --- What repo-fix pushes
 
 
-def test_with_local_integration_only_the_trunk_is_pushed():
-    found = plan_pushes([branch(unpushed=1), branch("feature", unpushed=2, unmerged=2)], LOCAL)
+def test_with_direct_integration_only_the_trunk_is_pushed():
+    found = plan_pushes([branch(unpushed=1), branch("feature", unpushed=2, unmerged=2)], DIRECT)
     assert found == [Push("main", force=False)]
 
 
@@ -241,12 +240,12 @@ def test_with_pr_rebase_integration_a_branch_is_pushed_with_a_lease_even_after_i
 
 
 def test_a_diverged_branch_is_not_pushed_outside_pr_rebase_integration():
-    assert plan_pushes([branch(unpushed=1, behind=1)], LOCAL) == []
+    assert plan_pushes([branch(unpushed=1, behind=1)], DIRECT) == []
     assert plan_pushes([branch("feature", unpushed=1, behind=1)], Integration.PR_MERGE) == []
 
 
 def test_with_the_trunk_unknown_any_branch_with_commits_to_push_is_pushed():
-    assert plan_pushes([branch("feature", trunk=None, unpushed=1)], LOCAL) == [
+    assert plan_pushes([branch("feature", trunk=None, unpushed=1)], DIRECT) == [
         Push("feature", force=False)
     ]
 

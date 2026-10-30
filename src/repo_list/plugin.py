@@ -31,6 +31,8 @@ class Stage(Enum):
     """Bring each branch level with its upstream."""
     LOCK = "lock"
     """Upgrade what the lock files hold, and push that."""
+    RELEASE = "release"
+    """Tag what was pushed as a new version."""
     AFTER_PUSH = "after-push"
     """Bring other services level with what was pushed."""
 

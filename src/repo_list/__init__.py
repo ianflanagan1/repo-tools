@@ -13,11 +13,13 @@ with ✔ in its place:
   👻 commits on detached HEAD     📡 fetch failed (with --fetch)
   🐘 Packagist (with --packagist) 💥 git failed
   🔴 npm (with --npm)             🔧 no integration, or a wrong one
+  🔖 commits since the latest version, and 🔗 a lock file behind on a package of yours (with a
+     package flag)
 
 Between the path and the mark is the branch checked out, or @ and the commit for a detached
 HEAD; the trunk is dimmed. 🤖 marks a directory a Claude Code session is busy in, and 💤 one
 whose .config/ianf-repo-tools.toml sets skip-fix = true; repo-fix leaves both alone.
-Before the path are four icons: the integration, 🏠 local, 📏 pr-rebase,
+Before the path are four icons: the integration, 🏠 direct, 📏 pr-rebase,
 🔀 pr-merge or 🔧 unset; the host, 🐙 GitHub, 🦊 GitLab, 🧺 Bitbucket, 🗻 Codeberg, 🔷 Azure
 DevOps, ❔ another or 🔌 no remote; with --fetch, 🌐 public or 🔒 private; and each kind of
 package it is, 🐘 Composer, 🔴 npm, 🐍 Python, 🧩 Claude Code plugin or 📋 Copier template,
@@ -32,7 +34,11 @@ A directory that holds files but is in no repository is listed as not a git repo
 --packagist, each package of your Packagist vendor's is checked: not on Packagist, Packagist
 lacking a version tag or branch commit that is on origin, or the check failed. A Composer
 project, an app, isn't a package. With --npm, each package of your npm scope's that isn't private
-is checked the same way, for version tags.
+is checked the same way, for version tags. With --python, each Python package another
+repository here pins. --packages does all of these. For each, on the trunk with direct
+integration: a package never released, or with commits since its latest version tag that change
+more than lock files, for Composer and npm; and a lock file holding a package of yours from
+another repository here at less than its highest version tag, or for Python than its trunk.
 The root, vendor and scope come from the project's config.toml; see config.example.toml.
 Ends with a count of those needing attention. Colour is used on a terminal, or with FORCE_COLOR
 set, unless NO_COLOR is set.
@@ -44,7 +50,7 @@ from pathlib import Path
 
 from cli_kit import cli, devbox, outcome
 
-from repo_list import ask_integration, config, plugins, report, scan
+from repo_list import ask_integration, ecosystems, plugins, report, scan
 from repo_tools import packages
 
 
@@ -60,16 +66,10 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="fetch every repository first, in parallel, so behind counts are current",
     )
-    parser.add_argument(
-        "-p",
-        "--packagist",
-        action="store_true",
-        help="check each package of your vendor's is on Packagist with all that's on origin",
-    )
-    parser.add_argument(
-        "--npm",
-        action="store_true",
-        help="check each package of your scope's is on npm with every version tag on origin",
+    ecosystems.add_flags(
+        parser,
+        lambda e: f"check {ecosystems.packages_of(e)} is released, published and upgraded",
+        "check every kind of package, as each flag above does",
     )
     parser.add_argument(
         "-a",
@@ -79,7 +79,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     devbox.use_tools()
-    settings = config.for_command(parser, args.packagist, args.npm)
+    chosen = ecosystems.chosen(args)
+    settings = ecosystems.settings_for(parser, chosen)
     args.root = args.root or settings.root
     root = Path(args.root).expanduser().resolve()
     if not root.is_dir():
@@ -89,11 +90,12 @@ def main(argv: list[str] | None = None) -> int:
     if not directories:
         print(f"No repositories under {root}")
         return 0
-    vendor = settings.packagist_vendor if args.packagist else None
-    scope = settings.npm_scope if args.npm else None
     # repo-list only checks, so nothing it wires is ever announced.
     pinned = set().union(*(packages.pinned(d.path) for d in directories))
-    active = plugins.built_in(vendor, scope, pinned, outcome.starting, upgrade_locks=False)
+    providers = ecosystems.providers((d.path for d in directories), chosen, settings, pinned)
+    active = plugins.built_in(
+        chosen, settings, pinned, providers, outcome.starting, upgrade_locks=False
+    )
     scan.survey(directories, active, fetch_first=args.fetch)
     ask_integration.ask_unset(directories, root, active)
     return report.show(root, directories, clean_too=args.all)

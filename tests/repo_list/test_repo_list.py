@@ -1,5 +1,6 @@
 """Behaviour of repo_list.py."""
 
+import json
 import os
 
 import pytest
@@ -30,7 +31,7 @@ def test_counts_of_one_are_singular(projects, run):
     assert run().listing == ["🏠 ❔    a  main  ✘ 📝 1 uncommitted file"]
 
 
-def test_with_local_integration_the_trunk_reports_commits_to_push_and_other_branches_work_to_land(
+def test_with_direct_integration_the_trunk_reports_commits_to_push_and_other_branches_work_to_land(
     projects, run
 ):
     a = projects.pushed_repo("a")
@@ -74,7 +75,7 @@ def test_an_integration_the_settings_file_names_wrongly_is_reported(projects, ru
     a = projects.pushed_repo("a")
     (a / ".config" / "ianf-repo-tools.toml").write_text('version = 1\nintegration = "yolo"\n')
     assert run().listing == [
-        "🔧 ❔    a  main  ✘ 🔧 .config/ianf-repo-tools.toml: integration must be one of local, "
+        "🔧 ❔    a  main  ✘ 🔧 .config/ianf-repo-tools.toml: integration must be one of direct, "
         "pr-rebase, pr-merge"
     ]
 
@@ -82,7 +83,7 @@ def test_an_integration_the_settings_file_names_wrongly_is_reported(projects, ru
 def test_a_repository_whose_settings_file_sets_skip_fix_is_marked(projects, run):
     a = projects.pushed_repo("a")
     (a / ".config" / "ianf-repo-tools.toml").write_text(
-        'version = 1\nintegration = "local"\nskip-fix = true\n'
+        'version = 1\nintegration = "direct"\nskip-fix = true\n'
     )
     assert run("--all").listing == ["🏠 ❔    a  main  💤 repo-fix skips  ✘ 📝 1 uncommitted file"]
 
@@ -90,7 +91,7 @@ def test_a_repository_whose_settings_file_sets_skip_fix_is_marked(projects, run)
 def test_a_skip_fix_that_is_not_true_or_false_is_reported(projects, run):
     a = projects.pushed_repo("a")
     (a / ".config" / "ianf-repo-tools.toml").write_text(
-        'version = 1\nintegration = "local"\nskip-fix = "yes"\n'
+        'version = 1\nintegration = "direct"\nskip-fix = "yes"\n'
     )
     assert run().listing == [
         "🏠 ❔    a  main  ✘ 🔧 .config/ianf-repo-tools.toml: skip-fix must be true or false"
@@ -99,7 +100,7 @@ def test_a_skip_fix_that_is_not_true_or_false_is_reported(projects, run):
 
 def test_a_settings_file_without_a_version_is_reported(projects, run):
     a = projects.pushed_repo("a")
-    (a / ".config" / "ianf-repo-tools.toml").write_text('integration = "local"\n')
+    (a / ".config" / "ianf-repo-tools.toml").write_text('integration = "direct"\n')
     listing = run().listing
     assert listing[0].startswith(
         "🔧 ❔    a  main  ✘ 🔧 No version in .config/ianf-repo-tools.toml. Add version = 1"
@@ -444,6 +445,54 @@ def test_the_npm_flag_without_a_scope_in_the_config_is_a_usage_error(projects, r
     projects.config.write_text('root = "~/projects"\n')
     with pytest.raises(SystemExit) as exit:
         run("--npm")
+    assert exit.value.code == 2
+
+
+# --- Releasing and upgrading your packages
+
+
+def test_with_a_package_flag_commits_since_the_latest_version_are_reported(
+    projects, packagist, run
+):
+    a = projects.package("a")
+    packagist.has("me/a")
+    projects.commit(a, "one")
+    projects.commit(a, "two")
+    assert run("--packagist").listing == [
+        "🏠 ❔    🐘 a  main  ✘ 📤 2 unpushed on main  🔖 2 commits since v1.0.0"
+    ]
+
+
+def test_with_a_package_flag_a_lock_file_behind_on_a_package_of_yours_is_reported(
+    projects, packagist, run
+):
+    kit = projects.package("kit")
+    packagist.has("me/kit")
+    projects.tag(kit, "v1.0.1")
+    app = projects.pushed_repo("app")
+    (app / "composer.json").write_text(
+        json.dumps({"name": "me/app", "type": "project", "require": {"me/kit": "^1"}})
+    )
+    (app / "composer.lock").write_text(
+        json.dumps({"packages": [{"name": "me/kit", "version": "v1.0.0"}]})
+    )
+    projects.git("-C", app, "add", "--all")
+    projects.git("-C", app, "commit", "--quiet", "--message", "Require me/kit")
+    projects.git("-C", app, "push", "--quiet")
+    assert run("--packagist").listing == ["🏠 ❔    app  main  ✘ 🔗 composer.lock behind on me/kit"]
+
+
+def test_with_a_package_flag_a_package_never_released_is_reported(projects, packagist, run):
+    a = projects.package("a")
+    projects.untag(a, "v1.0.0")
+    packagist.has("me/a")
+    assert run("--packagist").listing == ["🏠 ❔    🐘 a  main  ✘ 🔖 never released"]
+
+
+def test_the_packages_flag_without_every_setting_it_needs_is_a_usage_error(projects, run):
+    projects.config.write_text('[packagist]\nvendor = "me"\n')
+    with pytest.raises(SystemExit) as exit:
+        run("--packages")
     assert exit.value.code == 2
 
 

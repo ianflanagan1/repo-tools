@@ -1,7 +1,7 @@
 """📌 A Python project's uv.lock that `uv lock --upgrade` would change, upgraded by repo-fix,
 committed and pushed.
 
-Only the trunk is upgraded, and only with local integration, where repo-fix commits to the trunk
+Only the trunk is upgraded, and only with direct integration, where repo-fix commits to the trunk
 and pushes it: an upgrade on each branch would conflict when they land, and where work goes by pull
 request nothing is committed on the trunk. The upgrade comes after the branch is level with its
 upstream, so the commit goes on top of what's there. uv runs from the project's devbox.
@@ -53,12 +53,9 @@ class Lock(Plugin):
 
     def check(self, directory: Directory) -> list[Problem]:
         """What upgrading the trunk's uv.lock would change, when the trunk is checked out here
-        with local integration."""
-        place = directory.place
+        with direct integration."""
         repo = directory.path
-        if directory.fetch_failed or place is None or place.integration is None:
-            return []
-        if place.integration.by_pull_request or place.head is None or place.head != place.trunk:
+        if not on_direct_trunk(directory):
             return []
         if not (repo / "uv.lock").is_file():
             return []
@@ -78,13 +75,7 @@ class Lock(Plugin):
             return True
         if not any(isinstance(p, Upgradable) for p in problems):
             return True
-        if operation := in_progress(repo):
-            log(False, f"Not upgrading uv.lock: {operation} is in progress")
-            return False
-        facts = sync.gather(directory)
-        if behind := next((b for b in facts.branches if b.here and b.behind), None):
-            upstream = facts.upstreams[behind.name]
-            log(False, f"Not upgrading uv.lock: {behind.name} is behind {upstream}")
+        if not ready_to_commit(directory, "upgrading uv.lock", log):
             return False
 
         log.begin("Running `uv lock --upgrade`")
@@ -111,7 +102,40 @@ def upgrades(said: str) -> list[str]:
     return [line.strip() for line in said.splitlines() if line.startswith(_CHANGES)]
 
 
+def on_direct_trunk(directory: Directory) -> bool:
+    """Whether the directory has the trunk checked out with direct integration, where repo-fix
+    commits to the trunk and pushes it, and its fetch didn't fail, so it can be pushed."""
+    place = directory.place
+    if directory.fetch_failed or place is None or place.integration is None:
+        return False
+    return (
+        not place.integration.by_pull_request
+        and place.head is not None
+        and (place.head == place.trunk)
+    )
+
+
+def ready_to_commit(directory: Directory, doing: str, log: Log) -> bool:
+    """Whether a commit can go on top of what's checked out: no operation is in progress, and the
+    branch isn't behind its upstream. Logs why not, as "Not {doing}: ..."."""
+    repo = directory.path
+    if operation := in_progress(repo):
+        log(False, f"Not {doing}: {operation} is in progress")
+        return False
+    facts = sync.gather(directory)
+    if behind := next((b for b in facts.branches if b.here and b.behind), None):
+        upstream = facts.upstreams[behind.name]
+        log(False, f"Not {doing}: {behind.name} is behind {upstream}")
+        return False
+    return True
+
+
+def in_devbox(repo: Path, *command: str) -> subprocess.CompletedProcess[str]:
+    """Runs command from the project's devbox, in the project."""
+    devbox = [DEVBOX, "run", "--quiet", "--config", str(repo), "--"]
+    return subprocess.run([*devbox, *command], cwd=repo, capture_output=True, text=True)
+
+
 def _uv_lock_upgrade(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
     """Runs `uv lock --upgrade` with args, from the project's devbox, in the project."""
-    command = [DEVBOX, "run", "--quiet", "--config", str(repo), "--", "uv", "lock", "--upgrade"]
-    return subprocess.run([*command, *args], cwd=repo, capture_output=True, text=True)
+    return in_devbox(repo, "uv", "lock", "--upgrade", *args)

@@ -4,7 +4,7 @@ directory reports about its branches and what repo-fix does about them.
 Three integrations, each repository setting its own by `integration` in its
 .config/ianf-repo-tools.toml, with no default:
 
-- local: work reaches the trunk here, with no pull request, and only the trunk is pushed. Other
+- direct: work reaches the trunk here, with no pull request, and only the trunk is pushed. Other
   branches and detached HEADs are rebased onto the local trunk, and report what's still to land.
 - pr-rebase: work reaches the trunk by pull request. The trunk only follows its upstream; a
   branch is rebased onto the trunk on the remote and pushed with a lease.
@@ -31,14 +31,14 @@ UNSET = "🔧"
 
 
 class Integration(StrEnum):
-    LOCAL = "local"
+    DIRECT = "direct"
     PR_REBASE = "pr-rebase"
     PR_MERGE = "pr-merge"
 
     @property
     def icon(self) -> str:
         match self:
-            case Integration.LOCAL:
+            case Integration.DIRECT:
                 return "🏠"
             case Integration.PR_REBASE:
                 return "📏"
@@ -50,7 +50,7 @@ class Integration(StrEnum):
     @property
     def by_pull_request(self) -> bool:
         match self:
-            case Integration.LOCAL:
+            case Integration.DIRECT:
                 return False
             case Integration.PR_REBASE | Integration.PR_MERGE:
                 return True
@@ -95,7 +95,7 @@ class Head:
     branch: str | None
     """The branch checked out, or None for a detached HEAD."""
     base: str
-    """What it catches up with: the trunk with local integration, otherwise the trunk on the
+    """What it catches up with: the trunk with direct integration, otherwise the trunk on the
     remote."""
     behind_base: int
     conflicts: bool
@@ -255,14 +255,6 @@ class CatchUp:
 
 @final
 @dataclass(frozen=True)
-class WouldConflict:
-    """Behind its base, but catching up would conflict, so it's left for you."""
-
-    base: str
-
-
-@final
-@dataclass(frozen=True)
 class Push:
     branch: str
     force: bool
@@ -276,7 +268,7 @@ def plan_pulls(branches: Sequence[Branch], integration: Integration) -> list[Pul
     """How each branch behind its upstream is brought level with it, in the branches' order.
 
     Nothing is forced. A branch both behind and with commits of its own has diverged, and is
-    left alone, except the trunk checked out here with local integration: its own commits are
+    left alone, except the trunk checked out here with direct integration: its own commits are
     rebased onto its upstream, as a pull with rebase would.
     """
     pulls: list[Pull] = []
@@ -285,26 +277,26 @@ def plan_pulls(branches: Sequence[Branch], integration: Integration) -> list[Pul
             continue
         if not branch.unpushed:
             pulls.append(FastForward(branch.name, branch.here))
-        elif integration is Integration.LOCAL and branch.trunk and branch.here:
+        elif integration is Integration.DIRECT and branch.trunk and branch.here:
             pulls.append(RebaseOnUpstream(branch.name))
         else:
             pulls.append(Diverged(branch.name))
     return pulls
 
 
-def plan_catch_up(head: Head, integration: Integration) -> CatchUp | WouldConflict | None:
-    """How HEAD catches up with its base, or None when there's nothing to bring in."""
-    match assess_head(head, integration):
-        case []:
-            return None
-        case [Conflicts(base)]:
-            return WouldConflict(base)
-        case _:
-            return CatchUp(head.base, rebase=integration is not Integration.PR_MERGE)
+def plan_catch_up(head: Head, integration: Integration) -> CatchUp | None:
+    """How HEAD catches up with its base, or None when there's nothing to bring in.
+
+    A HEAD expected to conflict is caught up all the same, so that its conflict, if it has one, is
+    handled where every rebase's and merge's is.
+    """
+    if not assess_head(head, integration):
+        return None
+    return CatchUp(head.base, rebase=integration is not Integration.PR_MERGE)
 
 
 def plan_pushes(branches: Sequence[Branch], integration: Integration) -> list[Push]:
-    """Which branches are pushed, in the branches' order: with local integration only the trunk,
+    """Which branches are pushed, in the branches' order: with direct integration only the trunk,
     and where work goes by pull request every branch but the trunk.
 
     A diverged branch is pushed only with pr-rebase integration, with a lease, as its own rebase
@@ -383,7 +375,7 @@ def _role(branch: Branch, integration: Integration) -> _Role:
     if branch.trunk is None:
         return _Role.PUSHED
     match integration:
-        case Integration.LOCAL:
+        case Integration.DIRECT:
             return _Role.PUSHED if branch.trunk else _Role.LANDED
         case Integration.PR_REBASE | Integration.PR_MERGE:
             return _Role.PROTECTED_TRUNK if branch.trunk else _Role.PUSHED

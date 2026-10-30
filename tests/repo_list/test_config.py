@@ -30,7 +30,7 @@ def test_a_setting_left_out_takes_its_default(file):
 
 
 def test_the_integration_is_not_a_setting_as_each_repository_sets_its_own(file):
-    file.write_text('integration = "local"\n')
+    file.write_text('integration = "direct"\n')
     with pytest.raises(config.ConfigError, match="unknown setting integration"):
         config.load(file)
 

@@ -5,7 +5,6 @@ project keeps its .env; config.example.toml shows them. A missing file, or a set
 takes its default.
 """
 
-import argparse
 import sys
 import tomllib
 from dataclasses import dataclass
@@ -145,23 +144,3 @@ def skip_fix_in(table: dict, where: str) -> bool | Invalid:
     if not isinstance(skip_fix, bool):
         return Invalid(f"{where} must be true or false")
     return skip_fix
-
-
-def for_command(parser: argparse.ArgumentParser, packagist: bool, npm: bool) -> Config:
-    """The settings for a command that parser parsed, ending it with a usage error when they
-    can't be read, or when packagist or npm is asked for with no vendor or scope to check."""
-    try:
-        settings = load()
-    except ConfigError as error:
-        parser.error(str(error))
-    if packagist and not settings.packagist_vendor:
-        parser.error(
-            f"--packagist needs your vendor name: set packagist.vendor in {CONFIG}, "
-            f"as {CONFIG.with_name('config.example.toml').name} shows"
-        )
-    if npm and not settings.npm_scope:
-        parser.error(
-            f"--npm needs your scope: set npm.scope in {CONFIG}, "
-            f"as {CONFIG.with_name('config.example.toml').name} shows"
-        )
-    return settings
