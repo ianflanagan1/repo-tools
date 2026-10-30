@@ -198,7 +198,7 @@ def test_uncommitted_work_is_committed_by_running_the_commit_skill_in_the_reposi
     result = repo_fix()
     [(directory, *args)] = fakes.calls("claude")
     assert Path(directory) == a
-    assert args[:2] == ["-p", "/ianf-commit"]
+    assert args[:2] == ["--print", "/ianf-commit"]
     assert subjects(a) == ["init", "Fake commit"]
     head = git(a, "rev-parse", "--short", "HEAD")
     assert result.progress[:3] == [
