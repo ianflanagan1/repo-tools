@@ -26,7 +26,7 @@ def flags(ecosystem: Ecosystem) -> tuple[str, ...]:
     """The flag that chooses the ecosystem, its long form last."""
     match ecosystem:
         case Ecosystem.COMPOSER:
-            return ("-p", "--packagist")
+            return ("--packagist",)
         case Ecosystem.NPM:
             return ("--npm",)
         case Ecosystem.PYTHON:

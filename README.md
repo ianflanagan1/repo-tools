@@ -244,7 +244,7 @@ With PR integration a detached HEAD isn't caught up or pushed: it needs a branch
 
 ### Packagist
 
-A repository whose `composer.json` names a package of your Packagist vendor's, `packagist.vendor` in the [config](#config), should be on Packagist, offering every version tag and the latest commit of every branch on `origin`. Which repositories those are is read from the repositories themselves, so there's nothing to configure as packages come and go. The check is [`packagist update`](#packagist-update-dir)'s. It needs the network, so it runs only with `-p` (`--packagist`), and not for a repository whose fetch failed. A `composer.json` of `"type": "project"` is an app, not a package, so it isn't checked.
+A repository whose `composer.json` names a package of your Packagist vendor's, `packagist.vendor` in the [config](#config), should be on Packagist, offering every version tag and the latest commit of every branch on `origin`. Which repositories those are is read from the repositories themselves, so there's nothing to configure as packages come and go. The check is [`packagist update`](#packagist-update-dir)'s. It needs the network, so it runs only with `--packagist`, and not for a repository whose fetch failed. A `composer.json` of `"type": "project"` is an app, not a package, so it isn't checked.
 
 ### npm
 
@@ -252,7 +252,7 @@ A repository whose `package.json` names a package in your npm scope, `npm.scope`
 
 ### Your packages
 
-Each kind of package has a flag: `-p` (`--packagist`) for Composer, `--npm` for npm, `--python` for Python and `--go` for Go. `--packages` turns on every one, including any kind added later. For each kind chosen, on the trunk with direct integration:
+Each kind of package has a flag: `--packagist` for Composer, `--npm` for npm, `--python` for Python and `--go` for Go. `--packages` turns on every one, including any kind added later. For each kind chosen, on the trunk with direct integration:
 
 - A package of yours with commits since its latest version tag, or with none yet, is 🔖. Only Composer, npm and Go packages count, as they reach their dependants by version tag; a Python package is pinned from git, so its commits reach them as they are. Commits that change nothing but lock files, counting Go's `go.mod` and `go.sum` as lock files, don't count: a package's lock file never reaches the projects that use it, and releasing for one would pass each upgrade on down the chain of dependants, and round any that pin each other forever.
 - A project whose lock file (`composer.lock`, `package-lock.json`, `uv.lock` or Go's `go.mod`) holds a package of yours from another repository here at less than its latest is 🔗: below its highest version tag, or for a Python package pinned from a git branch, at a commit other than its trunk's upstream. One pinned to a tag or commit in `pyproject.toml` doesn't count, as no upgrade moves it.
@@ -265,7 +265,7 @@ Yours means your Packagist vendor's, your npm scope's, or for Python and Go any 
 repo-list [-a|--all] [-f|--fetch] [-p|--packagist] [--npm] [--python] [--go] [--packages] [<root>]
 ```
 
-`root` defaults to the configured root, wherever you run it from. `-a` lists clean repositories too. `-f` runs `git fetch --all` in every repository first, eight at a time, so the behind counts are current. `-p` checks each package against Packagist, and `--npm` against npm; with `--python` and `--go` too, each also checks [your packages](#your-packages), and `--packages` does all four. Without `-f`, `-p`, `--npm` or `--packages`, nothing touches the network.
+`root` defaults to the configured root, wherever you run it from. `-a` lists clean repositories too. `-f` runs `git fetch --all` in every repository first, eight at a time, so the behind counts are current. `--packagist` checks each package against Packagist, and `--npm` against npm; with `--python` and `--go` too, each also checks [your packages](#your-packages), and `--packages` does all four. Without `-f`, `--packagist`, `--npm` or `--packages`, nothing touches the network.
 
 Exit status: 0 all clean, 1 something needs attention, 2 usage error.
 
@@ -295,7 +295,7 @@ In each:
 | 📁 not a git repository | with `--init` only: `git init`, then committed and published |
 | 🔗 *lock file* behind on *packages* | with a package flag, on the trunk with direct integration, once it's level with its upstream: just those packages upgraded with the ecosystem's tool in the project's devbox (`composer update --no-install`, `npm update --package-lock-only`, `uv lock --upgrade-package` or `go get <module>@latest`, which asks each module's repository directly, as the module proxy can lag a release), then the lock file committed alone, with Go's `go.sum`, as "Upgrade *packages*", listing each, and pushed. A tool that leaves the lock file as it was, as when the project's constraint excludes a new major version, is reported, and the manifest left for you |
 | 🔖 *n* commits since *version* | with a package flag, on the trunk with direct integration, once pushed: `github release <dir> patch`, or `bitbucket release` for a repository on Bitbucket, which tags `HEAD` as the next patch version, v0.0.1 for a package never released, and pushes the tag. Releasing comes before Packagist and npm are told, so a package new to npm has the version tag `npmjs publish` needs. Minor and major versions are yours to release |
-| 🐘 Packagist | with `-p` only, after releasing: `packagist publish`, which also adds a missing webhook, then `packagist update`, which waits until Packagist has what was pushed |
+| 🐘 Packagist | with `--packagist` only, after releasing: `packagist publish`, which also adds a missing webhook, then `packagist update`, which waits until Packagist has what was pushed |
 | 🔴 npm | with `--npm` only, after releasing: for a package not on npm, `npmjs publish`, which needs your terminal for npm's one-time passwords and a version tag at `HEAD`; then `npmjs wait`, which waits until the package's publish workflow has published every version tag |
 
 Everything but writing the commits is deterministic. The commit step is checked before and after: it doesn't start during a merge, rebase, cherry-pick or revert, or on the trunk with PR integration, and it counts as done only if the work tree is then clean, on the same branch or detached HEAD, with the earlier commits untouched. It judges by git's state, not by what Claude says, because a skill that fails to load still ends in success with nothing done. If the commit step fails, nothing else happens in that repository.
@@ -348,7 +348,7 @@ Setup also copies `config.example.toml` to `config.toml`, if you have none, for 
 | Setting | Default | What for |
 |---|---|---|
 | `root` | `~/projects` | where repo-list and repo-fix look when given no directory |
-| `packagist.vendor` | none | whose packages `-p` checks; `-p` or `--packages` without it is a usage error |
+| `packagist.vendor` | none | whose packages `--packagist` checks; `--packagist` or `--packages` without it is a usage error |
 | `npm.scope` | none | whose packages `--npm` checks, such as `@me`; `--npm` or `--packages` without it is a usage error |
 | `bitbucket.workspace` | none | the workspace `bitbucket publish` creates repos in, and a bare repo name is in |
 | `description.provider` | `claude` | who writes a new GitHub or Bitbucket repo's description when its manifest has none: `claude`, through Claude Code signed in as you; `openai`, `gemini` or `mistral`, through their APIs with a key from your credential store, which the first use says how to store; or `none` |

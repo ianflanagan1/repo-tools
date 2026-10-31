@@ -33,8 +33,8 @@ def test_an_ecosystem_s_flag_chooses_just_that_ecosystem():
     assert ecosystems.chosen(parsed("--npm")) == {Ecosystem.NPM}
 
 
-def test_the_packagist_flag_chooses_composer_and_keeps_its_short_form():
-    assert ecosystems.chosen(parsed("-p")) == {Ecosystem.COMPOSER}
+def test_the_packagist_flag_chooses_composer():
+    assert ecosystems.chosen(parsed("--packagist")) == {Ecosystem.COMPOSER}
 
 
 def test_no_flag_chooses_no_ecosystem():
