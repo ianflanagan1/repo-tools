@@ -14,8 +14,7 @@ from pathlib import Path
 from typing import final
 
 # The session records worktree-hooks writes: their directory and JSON fields.
-# COUPLED:claude-sessions:[=
-#   (also github.com/ianflanagan1/worktree-hooks: scripts/agent_activity.py)]
+# COUPLED:claude-sessions: agents
 SESSIONS = "claude-sessions"
 BUSY = "busy"
 OWN_SESSION = "CLAUDE_CODE_SESSION_ID"

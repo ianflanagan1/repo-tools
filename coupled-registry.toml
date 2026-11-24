@@ -1,0 +1,11 @@
+version = 1
+
+["COUPLED:claude-sessions:"]
+relations = ["="]
+files = ["//github.com/ianflanagan1/worktree-hooks/scripts/agent_activity.py"]
+
+# Written by coupled --update: each group as it was last reviewed. Don't edit below this line.
+
+[reviewed."COUPLED:claude-sessions:"]
+definition = "1a0d654191837e16"
+"COUPLED:claude-sessions: agents" = {}
