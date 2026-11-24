@@ -142,6 +142,81 @@ def test_a_worktree_shows_its_own_branch(projects, run):
     assert run("--all").listing == ["🏠 ❔    a     main     ✔", "🏠 ❔    a-wt  feature  ✔"]
 
 
+# --- Private emails
+
+PRIVATE = "me@private.example"
+DATE = "2001-02-03T04:05:06+00:00"
+
+
+def test_unpushed_commits_whose_author_is_a_private_email_are_reported(projects, run):
+    projects.private_emails(PRIVATE)
+    a = projects.pushed_repo("a")
+    projects.commit_as(a, "one", PRIVATE, "test@example.com", DATE)
+    projects.commit_as(a, "two", PRIVATE, "test@example.com", DATE)
+    assert run().listing == [
+        "🏠 ❔    a  main  ✘ 📧 2 commits on main show a private email  📤 2 unpushed on main"
+    ]
+
+
+def test_an_unpushed_commit_whose_committer_is_a_private_email_is_reported(projects, run):
+    projects.private_emails(PRIVATE)
+    a = projects.pushed_repo("a")
+    projects.commit_as(a, "one", "test@example.com", PRIVATE, DATE)
+    assert run().listing == [
+        "🏠 ❔    a  main  ✘ 📧 1 commit on main shows a private email  📤 1 unpushed on main"
+    ]
+
+
+def test_a_private_email_matches_whatever_its_case(projects, run):
+    projects.private_emails("Me@Private.Example")
+    a = projects.pushed_repo("a")
+    projects.commit_as(a, "one", PRIVATE.upper(), "test@example.com", DATE)
+    assert run().listing == [
+        "🏠 ❔    a  main  ✘ 📧 1 commit on main shows a private email  📤 1 unpushed on main"
+    ]
+
+
+def test_commits_already_on_a_remote_are_not_reported_as_showing_a_private_email(projects, run):
+    projects.private_emails(PRIVATE)
+    a = projects.pushed_repo("a")
+    projects.commit_as(a, "one", PRIVATE, PRIVATE, DATE)
+    projects.git("-C", a, "push", "--quiet")
+    assert run("--all").listing == ["🏠 ❔    a  main  ✔"]
+
+
+def test_every_commit_of_a_repository_without_a_remote_is_checked_for_a_private_email(
+    projects, run
+):
+    projects.private_emails(PRIVATE)
+    a = projects.local_repo("a")
+    projects.commit_as(a, "one", PRIVATE, "test@example.com", DATE)
+    assert run().listing == [
+        "🏠 🔌    a  main  ✘ 🔌 no remote  📧 1 commit on main shows a private email"
+    ]
+
+
+def test_a_repository_kept_on_this_computer_only_is_not_checked_for_a_private_email(projects, run):
+    projects.private_emails(PRIVATE)
+    projects.git_host("none")
+    a = projects.local_repo("a")
+    projects.commit_as(a, "one", PRIVATE, PRIVATE, DATE)
+    assert run("--all").listing == ["🏠 💻    a  main  ✔"]
+
+
+def test_a_repository_where_git_commits_as_a_private_email_is_reported(projects, run):
+    projects.private_emails(PRIVATE)
+    a = projects.pushed_repo("a")
+    projects.git("-C", a, "config", "user.email", PRIVATE)
+    assert run().listing == ["🏠 ❔    a  main  ✘ 📧 git commits here as a private email"]
+
+
+def test_without_private_emails_set_no_email_is_reported(projects, run):
+    a = projects.pushed_repo("a")
+    projects.git("-C", a, "config", "user.email", PRIVATE)
+    projects.commit_as(a, "one", PRIVATE, PRIVATE, DATE)
+    assert run().listing == ["🏠 ❔    a  main  ✘ 📤 1 unpushed on main"]
+
+
 # --- Worktrees
 
 

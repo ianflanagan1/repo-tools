@@ -160,6 +160,7 @@ $ repo-list --fetch
 Each repository needing attention is listed by its path from the root, in name order, with ✘ and then what needs attention. Clean ones are left out unless you ask for them with `-a` (`--all`), when they're listed with ✔ in its place:
 
 - 📝 **uncommitted files**: changed, staged or untracked
+- 📧 ***n* commits on *branch* show a private email**, or **git commits here as a private email**: with `email.private` set in the [config](#config), a commit on no remote yet whose author or committer is one of those emails, or git's own identity here being one, so pushing would publish it; not checked in a repository kept on this computer only, until it's published
 - 📤 **unpushed on *branch***: commits on a local branch that are on no remote, whether or not the branch has an upstream: on the trunk with direct integration, on any other branch with PR integration (see [Worktrees and integration](#worktrees-and-integration))
 - 📥 **behind on *branch***: commits on the branch's upstream that it lacks, as of the last fetch
 - 🛬 **unmerged on *branch***: with direct integration, commits on a branch other than the trunk that aren't on it yet: work still to land
@@ -303,6 +304,7 @@ In each:
 |---|---|
 | 📝 uncommitted files | Claude Code's `/ianf-commit` skill, run headless (`claude --print /ianf-commit`) |
 | 🔌 no remote | `github publish` or `bitbucket publish`, for the git host `[remotes.origin]` names in `.config/ianf-repo-tools.toml`, asked for when it names none, and not at all for `none` (see [Where origin is published](#where-origin-is-published)); so public, and waiting for CI unless `--no-ci-wait` |
+| 📧 private email | before publishing or pushing: the branch checked out has its commits on no remote that show a private email rewritten, by a rebase from the oldest of them, to show the author git commits as now, keeping their author dates; others' commits among them keep their authors. Where git itself commits as a private email, another branch shows one, or a merge is among the commits, it's left for you, and nothing in the directory is published or pushed |
 | 📥 behind | fast-forwarded to the upstream, whether the branch is checked out or not; with direct integration, a trunk checked out here with commits of its own has them rebased onto the upstream |
 | 🔄 behind its base | rebased onto it, or with `pr-merge` integration the base merged in; one that stops at a conflict is undone |
 | 📤 unpushed | pushed to the upstream, with a lease after a rebase with `pr-rebase` integration; a branch with none is pushed to the only remote and tracks it |
@@ -367,6 +369,7 @@ Setup also copies `config.example.toml` to `config.toml`, if you have none, for 
 | `packagist.vendor` | none | whose packages `--packagist` checks; `--packagist` or `--dependencies` without it is a usage error |
 | `npm.scope` | none | whose packages `--npm` checks, such as `@me`; `--npm` or `--dependencies` without it is a usage error |
 | `bitbucket.workspace` | none | the workspace `bitbucket publish` creates repos in, and a bare repo name is in |
+| `email.private` | none | emails of yours, such as a personal address, that no pushed commit should show; repo-list reports, and repo-fix rewrites, commits on no remote that show one, and reports a repository where git commits as one |
 | `description.provider` | `claude` | who writes a new GitHub or Bitbucket repo's description when its manifest has none: `claude`, through Claude Code signed in as you; `openai`, `gemini` or `mistral`, through their APIs with a key from your credential store, which the first use says how to store; or `none` |
 
 ### GitHub
@@ -490,8 +493,8 @@ src/
     ├── ask_integration.py, ask_git_host.py
     │                     asking on the terminal for an unset integration, or git host
     ├── plugin.py         what a plugin is, and the stages repo-fix runs fixes in
-    ├── plugins/          init, publish, uncommitted, sync, proposal, detached, stashes, lock,
-    │                     dependants, release, dependency, packagist, npm
+    ├── plugins/          init, publish, uncommitted, private_email, sync, proposal, detached,
+    │                     stashes, lock, dependants, release, dependency, packagist, npm
     ├── git.py
     ├── report.py
     ├── config.py

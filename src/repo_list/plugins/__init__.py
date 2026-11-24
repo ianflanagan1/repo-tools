@@ -18,6 +18,7 @@ from repo_list.plugins.init import Init
 from repo_list.plugins.lock import Lock
 from repo_list.plugins.npm import Npm
 from repo_list.plugins.packagist import Packagist
+from repo_list.plugins.private_email import PrivateEmail
 from repo_list.plugins.proposal import Proposal
 from repo_list.plugins.publish import Publish
 from repo_list.plugins.release import Release
@@ -51,13 +52,14 @@ def built_in(
     directories pin, which makes a Python project a package, offering every directory whose flake
     has an output for other flakes, which makes it one, and providers the repository each package
     of yours comes from. announce shows each run of an agent, such as the commit skill's,
-    as it starts.
+    as it starts. Commits are checked for a private email only when settings name some.
     """
     ordered = [e for e in Ecosystem if e in chosen]
     return [
         Init(fixes=init),
         Publish(wait_for_ci=wait_for_ci),
         Uncommitted(ClaudeCode(None, COMMIT_TIMEOUT_SECONDS, announce)),
+        *([PrivateEmail(settings.private_emails)] if settings.private_emails else []),
         Sync(),
         Proposal(remote_repos.for_remote),
         Branch(),

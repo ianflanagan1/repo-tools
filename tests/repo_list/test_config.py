@@ -121,6 +121,28 @@ def test_an_unknown_description_setting_is_an_error_naming_it(file):
         config.load(file)
 
 
+def test_private_emails_are_read_from_the_file_in_lower_case(file):
+    file.write_text('[email]\nprivate = ["Me@Example.com", "old@example.com"]\n')
+    assert config.load(file).private_emails == ("me@example.com", "old@example.com")
+
+
+def test_without_private_emails_none_are_set(file):
+    file.write_text("")
+    assert config.load(file).private_emails == ()
+
+
+def test_private_emails_that_are_not_a_list_of_addresses_are_an_error(file):
+    file.write_text('[email]\nprivate = "me@example.com"\n')
+    with pytest.raises(config.ConfigError, match="email.private must be a list of email"):
+        config.load(file)
+
+
+def test_an_unknown_email_setting_is_an_error_naming_it(file):
+    file.write_text('[email]\npublic = ["me@example.com"]\n')
+    with pytest.raises(config.ConfigError, match="unknown setting email.public"):
+        config.load(file)
+
+
 def test_the_example_config_is_valid_and_names_placeholders():
     example = Path(sys.prefix).parent / "config.example.toml"
     assert config.load(example) == Config(
@@ -129,4 +151,5 @@ def test_the_example_config_is_valid_and_names_placeholders():
         bitbucket_workspace="your-workspace",
         npm_scope="@your-scope",
         description_provider=Provider.CLAUDE,
+        private_emails=("you@example.com",),
     )

@@ -3,7 +3,8 @@
 Every test starts with HOME pointed inside the test's temporary directory, so no real git config
 is read, and an empty `~/projects`, `projects.root`, to be searched. Tests run from outside it.
 Bare remotes go in `projects.remotes`, outside the searched directory. The project's config.toml is
-`projects.config`, naming the Packagist vendor `me` and the npm scope `@me`. Each repository
+`projects.config`, naming the Packagist vendor `me` and the npm scope `@me`, and no private email
+until `projects.private_emails` names some. Git commits as test@example.com. Each repository
 made sets its integration, direct, in a committed .config/ianf-repo-tools.toml;
 `projects.integration` sets another, or none, for the repositories made after it. A repository
 made with no remote also puts origin on GitHub there, as [remotes.origin] git-host;
@@ -195,6 +196,31 @@ class Projects:
             capture_output=True,
             text=True,
         ).stdout.strip()
+
+    def private_emails(self, *emails: str) -> None:
+        """Names emails as private in the project's config.toml."""
+        listed = ", ".join(f'"{email}"' for email in emails)
+        self.config.write_text(CONFIG + f"\n[email]\nprivate = [{listed}]\n")
+
+    @staticmethod
+    def commit_as(repo: Path, message: str, author: str, committer: str, date: str) -> None:
+        """Add a line to the repo's file f and commit it with author and committer as their
+        emails, and date as the author date."""
+        with open(repo / "f", "a") as f:
+            f.write(message + "\n")
+        git("-C", repo, "add", "--all")
+        git(
+            "-C",
+            repo,
+            "-c",
+            f"user.email={committer}",
+            "commit",
+            "--quiet",
+            f"--author=test <{author}>",
+            f"--date={date}",
+            "--message",
+            message,
+        )
 
     @staticmethod
     def commit(repo: Path, message: str) -> None:

@@ -534,6 +534,114 @@ def test_a_repository_whose_fetch_fails_is_neither_pushed_nor_pulled(projects, r
     assert result.listing == ["🏠 ❔    a  main  ✘ 📤 1 unpushed on main  📡 fetch failed"]
 
 
+# --- Private emails
+
+PRIVATE = "me@private.example"
+DATE = "2001-02-03T04:05:06Z"
+
+
+def emails(repo: Path, revisions: str = "HEAD") -> list[str]:
+    """Each commit's author email, committer email and author date, oldest first."""
+    return git(repo, "log", "--reverse", "--format=%ae %ce %aI", revisions).splitlines()
+
+
+def test_unpushed_commits_showing_a_private_email_are_rewritten_as_git_commits_now_then_pushed(
+    projects, repo_fix
+):
+    projects.private_emails(PRIVATE)
+    a = projects.pushed_repo("a")
+    projects.commit_as(a, "one", PRIVATE, PRIVATE, DATE)
+    projects.commit_as(a, "two", "test@example.com", PRIVATE, DATE)
+    result = repo_fix()
+    assert result.progress == [
+        "a",
+        "  ✔ Rewrote 2 commits on main to show test@example.com",
+        "  ✔ Pushed main to origin",
+    ]
+    assert subjects(projects.origin(a)) == ["init", "one", "two"]
+    assert emails(projects.origin(a), "HEAD~2..HEAD") == [
+        f"test@example.com test@example.com {DATE}",
+        f"test@example.com test@example.com {DATE}",
+    ]
+    assert result.summary == "✔ All 1 clean"
+
+
+def test_an_unpushed_commit_by_someone_else_keeps_its_author(projects, repo_fix):
+    projects.private_emails(PRIVATE)
+    a = projects.pushed_repo("a")
+    projects.commit_as(a, "mine", PRIVATE, PRIVATE, DATE)
+    projects.commit_as(a, "theirs", "other@example.com", "other@example.com", DATE)
+    repo_fix()
+    assert [line.split()[0] for line in emails(projects.origin(a), "HEAD~2..HEAD")] == [
+        "test@example.com",
+        "other@example.com",
+    ]
+
+
+def test_a_repository_without_a_remote_is_rewritten_before_it_is_published(
+    projects, fakes, repo_fix
+):
+    projects.private_emails(PRIVATE)
+    a = projects.local_repo("a")
+    projects.commit_as(a, "one", PRIVATE, PRIVATE, DATE)
+    result = repo_fix()
+    assert result.progress[1] == "  ✔ Rewrote 1 commit on main to show test@example.com"
+    assert [call[1:] for call in fakes.calls("github")] == [["publish", str(a)]]
+    assert all(PRIVATE not in line for line in emails(a))
+
+
+def test_where_git_commits_as_a_private_email_nothing_is_rewritten_or_pushed(projects, repo_fix):
+    projects.private_emails(PRIVATE)
+    a = projects.pushed_repo("a")
+    projects.git("-C", a, "config", "user.email", PRIVATE)
+    projects.commit_as(a, "one", PRIVATE, PRIVATE, DATE)
+    result = repo_fix()
+    assert result.progress == [
+        "a",
+        "  ✘ Not pushing: git commits here as a private email; set user.email for this git host",
+    ]
+    assert subjects(projects.origin(a)) == ["init"]
+    assert emails(a, "HEAD~1..HEAD") == [f"{PRIVATE} {PRIVATE} {DATE}"]
+
+
+def test_private_emails_on_a_branch_not_checked_out_are_left_and_nothing_is_pushed(
+    projects, repo_fix
+):
+    projects.private_emails(PRIVATE)
+    a = projects.pushed_repo("a")
+    projects.git("-C", a, "switch", "--quiet", "-c", "feature")
+    projects.commit_as(a, "one", PRIVATE, PRIVATE, DATE)
+    projects.git("-C", a, "switch", "--quiet", "main")
+    projects.commit(a, "local")
+    result = repo_fix()
+    assert result.progress == [
+        "a",
+        "  ✘ Not pushing: feature has commits showing a private email; check it out and run"
+        " repo-fix there",
+    ]
+    assert subjects(projects.origin(a)) == ["init"]
+
+
+def test_private_emails_among_merges_are_left_and_nothing_is_pushed(projects, repo_fix):
+    projects.private_emails(PRIVATE)
+    a = projects.pushed_repo("a")
+    projects.git("-C", a, "switch", "--quiet", "-c", "side")
+    projects.commit_as(a, "one", PRIVATE, PRIVATE, DATE)
+    projects.git("-C", a, "switch", "--quiet", "main")
+    (a / "g").write_text("g\n")
+    projects.git("-C", a, "add", "g")
+    projects.git("-C", a, "commit", "--quiet", "--message", "g")
+    projects.git("-C", a, "merge", "--quiet", "--no-edit", "side")
+    projects.git("-C", a, "branch", "--delete", "--force", "side")
+    result = repo_fix()
+    assert result.progress == [
+        "a",
+        "  ✘ Not pushing: main has commits showing a private email among merges; rewrite them"
+        " yourself",
+    ]
+    assert subjects(projects.origin(a)) == ["init"]
+
+
 # --- Dependencies between repositories
 
 

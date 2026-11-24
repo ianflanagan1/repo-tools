@@ -35,6 +35,8 @@ class Config:
     for no one."""
     npm_scope: str | None = None
     """The npm scope, such as @me, whose packages should be on npm; None checks no packages."""
+    private_emails: tuple[str, ...] = ()
+    """Emails, in lower case, no commit should show once pushed; none checks no commits."""
 
 
 @final
@@ -71,12 +73,16 @@ def load(path: Path | None = None) -> Config:
     npm = settings.pop("npm", {})
     if not isinstance(npm, dict):
         raise ConfigError(f"{path}: npm must be a table")
+    email = settings.pop("email", {})
+    if not isinstance(email, dict):
+        raise ConfigError(f"{path}: email must be a table")
     unknown = [
         *settings.keys() - {"root"},
         *(f"packagist.{k}" for k in packagist.keys() - {"vendor"}),
         *(f"bitbucket.{k}" for k in bitbucket.keys() - {"workspace"}),
         *(f"description.{k}" for k in description.keys() - {"provider"}),
         *(f"npm.{k}" for k in npm.keys() - {"scope"}),
+        *(f"email.{k}" for k in email.keys() - {"private"}),
     ]
     if unknown:
         raise ConfigError(f"{path}: unknown setting {', '.join(sorted(unknown))}")
@@ -97,12 +103,16 @@ def load(path: Path | None = None) -> Config:
     scope = npm.get("scope", Config.npm_scope)
     if scope is not None and not (isinstance(scope, str) and scope.startswith("@")):
         raise ConfigError(f"{path}: npm.scope must start with @, such as @me")
+    private = email.get("private", [])
+    if not (isinstance(private, list) and all(isinstance(e, str) and "@" in e for e in private)):
+        raise ConfigError(f"{path}: email.private must be a list of email addresses")
     return Config(
         root,
         vendor,
         workspace,
         None if provider == NO_PROVIDER else Provider(provider),
         scope,
+        tuple(e.lower() for e in private),
     )
 
 

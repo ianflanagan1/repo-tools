@@ -26,3 +26,10 @@ workspace = "your-workspace"
 # (through Claude Code, signed in as you), openai, gemini or mistral (through their APIs, with a
 # key from your credential store), or none.
 provider = "claude"
+
+[email]
+# Emails of yours that no commit should show once pushed, such as your personal address. repo-list
+# reports a repository where git commits as one, or where a commit on no remote yet shows one;
+# repo-fix rewrites such commits on the branch checked out to show the address git commits as
+# now, and pushes nothing from a repository it can't. Leave it out to check no emails.
+private = ["you@example.com"]
