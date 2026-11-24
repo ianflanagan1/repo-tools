@@ -15,7 +15,7 @@ from cli_kit.credentials import Token
 from cli_kit.outcome import Done, Precondition
 
 from repo_tools.bitbucket import api
-from repo_tools.bitbucket.forge import Bitbucket
+from repo_tools.bitbucket.git_host_api import Bitbucket
 
 DELETE_TOKEN = Token(
     service="bitbucket-delete-token",
@@ -39,9 +39,9 @@ def register(subparsers: cli.Subparsers) -> None:
 
 
 def delete(name: str) -> Done:
-    forge = Bitbucket()
-    repo = forge.full_name(name).lower()
-    existing = forge.client.repository(repo)
+    git_host = Bitbucket()
+    repo = git_host.full_name(name).lower()
+    existing = git_host.client.repository(repo)
     if existing is None:
         raise Precondition(f"No Bitbucket repo {repo}, or the token can't see it.")
 

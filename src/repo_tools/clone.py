@@ -1,4 +1,4 @@
-"""A local clone of a repo on any host: the remote it names, and pushing from it."""
+"""A local clone of a repo on any git host: the remote it names, and pushing from it."""
 
 from pathlib import Path
 

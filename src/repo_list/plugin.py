@@ -62,13 +62,13 @@ class Slot(Enum):
 
     INTEGRATION = "integration"
     """The integration."""
-    HOST = "host"
-    """Where the remote repository is, such as GitHub, or that there's none."""
+    GIT_HOST = "git-host"
+    """The git host of the remote repository, such as GitHub, or that there's none."""
     VISIBILITY = "visibility"
     """Who can see the remote repository."""
-    PACKAGE = "package"
-    """Each kind of package the repository is, such as Composer; left out of the listing when no
-    directory in it is one."""
+    DEPENDENCY = "dependency"
+    """Each kind of dependency the repository is, such as Composer; left out of the listing when
+    no directory in it is one."""
 
 
 @dataclass(frozen=True)

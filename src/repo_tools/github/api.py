@@ -107,6 +107,10 @@ def rename(repo: str, new_name: str) -> None:
     output("gh", "repo", "rename", new_name, "--repo", repo, "--yes")
 
 
+def ssh_url(repo: str) -> str:
+    return f"git@github.com:{repo}.git"
+
+
 def renamed_url(url: str, repo: str) -> str:
     """The GitHub remote URL url, in the same SSH or HTTPS form, naming repo instead."""
     return re.sub(r"(github\.com[:/]).+?((?:\.git)?)$", rf"\g<1>{repo}\g<2>", url)

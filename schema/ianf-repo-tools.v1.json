@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/ianflanagan1/repo-tools/main/schema/ianf-repo-tools.v1.json",
   "title": ".config/ianf-repo-tools.toml, version 1",
-  "description": "How work reaches the trunk, and whether repo-fix leaves it alone, for repo-list and repo-fix. Each worktree goes by its own copy, as it is on disk; the trunk's integration is the copy committed on the trunk. See repo-tools' README.",
+  "description": "How work reaches the trunk, whether repo-fix leaves it alone, and where origin is published, for repo-list and repo-fix. Each worktree goes by its own copy, as it is on disk; the trunk's integration is the copy committed on the trunk. See repo-tools' README.",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "integration"],
@@ -19,6 +19,24 @@
       "description": "Whether repo-fix leaves the worktree alone, while repo-list still reports what needs attention. False when left out.",
       "type": "boolean",
       "default": false
+    },
+    "remotes": {
+      "description": "Each remote's git host, by the remote's name. Only origin for now. repo-fix publishes a repository with no remote on origin's git host, asking for one when it's left out, and repo-list reports an origin that isn't on it, or a remote on a repository kept local.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "origin": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["git-host"],
+          "properties": {
+            "git-host": {
+              "description": "The git host origin is on. github: published with `github publish`, under the account gh is logged in as. bitbucket: with `bitbucket publish`, in bitbucket.workspace from repo-tools' config.toml. none: kept on this computer only, never published nor asked for a git host, which needs integration = \"direct\".",
+              "enum": ["github", "bitbucket", "none"]
+            }
+          }
+        }
+      }
     }
   }
 }

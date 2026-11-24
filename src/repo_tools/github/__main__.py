@@ -4,9 +4,9 @@ import sys
 
 from cli_kit import cli
 
-from repo_tools import forge_commands
+from repo_tools import git_host_commands
 from repo_tools.github.commands import archive, delete, edit, publish, release, rename, view
-from repo_tools.github.forge import GitHub
+from repo_tools.github.git_host_api import GitHub
 
 COMMANDS = [
     publish,
@@ -16,7 +16,7 @@ COMMANDS = [
     edit,
     archive,
     delete,
-    *forge_commands.commands(GitHub),
+    *git_host_commands.commands(GitHub),
 ]
 
 

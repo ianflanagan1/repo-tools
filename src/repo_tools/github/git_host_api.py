@@ -1,4 +1,4 @@
-"""GitHub as a Forge, read through gh.
+"""GitHub as a GitHostApi, read through gh.
 
 Deployments are GitHub's deployments API, which Actions fills when a job names an environment,
 and each one's status is its latest deployment status. GitHub marks a successful deployment
@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from cli_kit.outcome import Failure, Precondition
 from cli_kit.proc import output
 
-from repo_tools.forge import Commit, Deployment, Forge, PullRequest, Status
+from repo_tools.git_host_api import Commit, Deployment, GitHostApi, PullRequest, Status
 from repo_tools.github import api
 
 PAGE = 100
@@ -61,11 +61,14 @@ query($owner: String!, $name: String!, $base: String, $after: String) {
 """
 
 
-class GitHub(Forge):
+class GitHub(GitHostApi):
     name = "GitHub"
 
     def full_name(self, repo: str) -> str:
         return api.full_name(repo)
+
+    def url(self, repo: str) -> str:
+        return api.ssh_url(repo)
 
     def main_branch(self, repo: str) -> str:
         self._must_exist(repo)

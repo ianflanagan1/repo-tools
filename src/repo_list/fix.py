@@ -3,36 +3,43 @@
 path is a repository, or a directory to search as repo-list does (default: root in config.toml,
 or ~/projects).
 Every repository is fetched first, once for all of its worktrees, and one that sets no
-integration is asked for one, as repo-list asks. Then each is fixed, a
+integration is asked for one, as repo-list asks; one with no remote whose settings name no git host
+for origin is asked for that. Then each is fixed, a
 repository's worktrees one after another, the one that updates its trunk first, so the others
 catch up with the trunk as it now is. Repositories go in name order, but each that another pins
 as a dependency, such as from git in its uv.lock or from Packagist in its composer.lock, goes
 before it, and its own pinned dependencies before that; one read from a path doesn't count. So a
-dependant's uv.lock can upgrade to what its dependencies just pushed. Repositories that depend on
+dependant's lock file can upgrade to what its dependencies just pushed. Repositories that depend on
 each other are said to, and go in name order. A dependant is fixed even when its dependency's fix
 failed. In each:
 
   📝 uncommitted files   committed by Claude Code's /ianf-commit skill, then checked: the work tree
                          must be clean, on the same branch or detached HEAD, with earlier
-                         commits untouched; never on the trunk with PR integration
-  🔌 no remote           published with `github publish`, public
+                         commits untouched; never on the trunk with PR integration, but
+                         for a new repository's first commit
+  🔌 no remote           published on the git host [remotes.origin] names in
+                         .config/ianf-repo-tools.toml, with `github publish` or
+                         `bitbucket publish`, public; asked for when it names none;
+                         never with git-host none, which keeps it on this computer
   📥 behind              fast-forwarded to the upstream; with direct integration, a trunk checked
                          out here with commits of its own has them rebased onto it
   🔄 behind its base     rebased onto it, or with pr-merge integration the base merged in
   📤 unpushed            pushed to the upstream, or with no upstream to the only remote
   🔃 no pull request     opened as a draft, with PR integration
-  📌 uv.lock             one that `uv lock --upgrade` would change, on the trunk with direct
-                         integration: upgraded in the project's devbox, committed alone and pushed
-  🔗 lock file behind    with a package flag, on the trunk with direct integration, one holding a
-                         package of yours from another repository here at less than its latest:
-                         just that package upgraded with composer, npm or uv in the project's
-                         devbox, then the lock file committed alone and pushed
+  📌 lock file          a composer.lock, package-lock.json, uv.lock or go.mod its tool would
+                         change, on the trunk with direct integration: every package upgraded
+                         in the project's devbox, what it holds installed, and the check task
+                         run, if there is one; then committed and pushed, or if that fails, put
+                         back as it was
+  📌 installs behind     in any worktree, dependencies installed that differ from what the lock
+                         file holds, as after a fast-forward: installed again
   🔖 unreleased commits  with a package flag, for a Composer or npm package of yours, on the
                          trunk with direct integration, once pushed: commits since its latest
                          version tag that change more than lock files, or a package never
                          released, are released as the next patch version with `github release`
                          or `bitbucket release`
-  📁 not a repository    with --init only: initialised, committed and published
+  📁 not a repository    with --init only: initialised, asked for its integration and git host, then
+                         committed and published
   🐘 Packagist           with --packagist only, for a package of your vendor's, once released:
                          `packagist publish`, then `packagist update`, which waits until
                          Packagist has what was pushed
@@ -58,10 +65,12 @@ from pathlib import Path
 from cli_kit import cli, devbox, outcome
 from cli_kit.colour import GREEN, GREY, RED, YELLOW, Style
 
-from repo_list import ask_integration, dependencies, ecosystems, integration, plugins, report, scan
+from repo_list import ask_git_host, ask_integration, ecosystems, integration, plugins, report, scan
+from repo_list.fix_order import edges, fix_first
 from repo_list.plugin import Plugin, Stage
 from repo_list.scan import ConfigInvalid, Directory
-from repo_tools import packages
+from repo_tools import dependencies
+from repo_tools.dependencies import Ecosystem
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -82,9 +91,9 @@ def main(argv: list[str] | None = None) -> int:
         parser,
         lambda e: (
             f"release and publish {ecosystems.packages_of(e)}, "
-            "and upgrade it in the projects here that pin it"
+            "and report the projects here whose lock files hold it at less than its latest"
         ),
-        "do so for every kind of package, as each flag above does",
+        "do so for every kind of dependency, as each flag above does",
     )
     args = parser.parse_args(argv)
     devbox.use_tools()
@@ -95,32 +104,40 @@ def main(argv: list[str] | None = None) -> int:
     if not path.is_dir():
         parser.error(f"not a directory: {args.path}")
 
-    if directory := scan.classify(path):
-        root, directories = path.parent, [directory]
-    else:
-        root, directories = path, scan.find(path)
+    root, directories = scan.named_by(path)
     if not directories:
         print(f"No repositories under {root}")
         return 0
 
     log = Log(Style.for_stream())
-    pinned = {d.path: packages.pinned(d.path) for d in directories}
+    pinned = {d.path: dependencies.pinned(d.path) for d in directories}
     every_pinned = set().union(*pinned.values())
+    offering = dependencies.offering(d.path for d in directories)
     active = plugins.built_in(
         chosen,
         settings,
         every_pinned,
-        ecosystems.providers((d.path for d in directories), chosen, settings, every_pinned),
+        offering,
+        ecosystems.providers(
+            (d.path for d in directories), chosen, settings, every_pinned, offering
+        ),
         log.begin,
         upgrade_locks=True,
+        own_go_modules=sorted(
+            n.name
+            for d in directories
+            for n in dependencies.names(d.path)
+            if n.ecosystem is Ecosystem.GO
+        ),
         init=args.init,
         wait_for_ci=not args.no_ci_wait,
     )
     scan.survey(directories, active, fetch_first=True)
     ask_integration.ask_unset(directories, root, active)
+    ask_git_host.ask_unset(directories, root, active)
     fixed_any = False
     changed: set[Path] = set()
-    fixed_names: set[packages.Name] = set()
+    fixed_names: set[dependencies.Name] = set()
     order, cycles = in_fix_order(directories, pinned)
     for cycle in cycles:
         names = ", ".join(str(d.path.relative_to(root)) for d in cycle)
@@ -141,11 +158,11 @@ def main(argv: list[str] | None = None) -> int:
             if directory.problems:
                 log(False, "Left alone: a Claude Code session is working here")
         else:
-            fix(directory, active, log)
+            fix(directory, active, log, root)
         if common and log.started:
             changed.add(common)
         if log.started:
-            fixed_names |= packages.names(directory.path)
+            fixed_names |= dependencies.names(directory.path)
         if directory.trunk_update_failed:
             for other in directories:
                 if other.place and other.place.common_dir == common:
@@ -159,7 +176,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def in_fix_order(
-    directories: list[Directory], pinned: dict[Path, set[packages.Name]]
+    directories: list[Directory], pinned: dict[Path, set[dependencies.Name]]
 ) -> tuple[list[Directory], list[list[Directory]]]:
     """The directories in the order to fix them, given what each pins: each repository's worktrees
     together, the one that updates its trunk first, so the others catch up with the trunk as it now
@@ -176,9 +193,9 @@ def in_fix_order(
     for i in integration.fix_order(described, trunks):
         directory = directories[i]
         repos.setdefault(_repo(directory), []).append(directory)
-    called = {r: set().union(*(packages.names(d.path) for d in ds)) for r, ds in repos.items()}
+    called = {r: set().union(*(dependencies.names(d.path) for d in ds)) for r, ds in repos.items()}
     pins = {r: set().union(*(pinned[d.path] for d in ds)) for r, ds in repos.items()}
-    order = dependencies.fix_first(list(repos), dependencies.edges(called, pins))
+    order = fix_first(list(repos), edges(called, pins))
     return (
         [directory for repo in order.keys for directory in repos[repo]],
         [[repos[repo][0] for repo in cycle] for cycle in order.cycles],
@@ -231,12 +248,14 @@ class Log:
             self.started = True
 
 
-def fix(directory: Directory, active: list[Plugin], log: Log) -> None:
+def fix(directory: Directory, active: list[Plugin], log: Log, root: Path) -> None:
     """Runs the fix of each plugin that found something in the directory, stage by stage.
 
     Once a fix has run, each later plugin checks the directory again before its fix, as the fix may
     have changed what it finds: a commit leaves commits to push. A fix that fails stops the
-    directory there, and a directory git couldn't read is left alone.
+    directory there, and a directory git couldn't read is left alone. A directory just made a
+    repository is asked for its integration and git host before it's committed, so its settings
+    go in with its first commit.
     """
     changed = False
     for stage in Stage:
@@ -249,6 +268,10 @@ def fix(directory: Directory, active: list[Plugin], log: Log) -> None:
             if not plugin.fix(directory, problems, log):
                 return
             changed = True
+        if stage is Stage.INIT and changed:
+            scan.locate(directory)
+            ask_integration.ask_unset([directory], root, active)
+            ask_git_host.ask_unset([directory], root, active)
 
 
 if __name__ == "__main__":

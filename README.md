@@ -124,20 +124,21 @@ There's no `bitbucket archive`: Bitbucket Cloud can't archive a repo.
 
 ## Delivery data
 
-`github` and `bitbucket` have the same four commands for reading what a repo delivered, written once against the interface in `repo_tools/forge.py`, so their output is alike whichever host it is:
+`github` and `bitbucket` have the same four commands for reading what a repo delivered, and `url`, written once against the interface in `repo_tools/git_host_api.py`, so their output is alike whichever git host it is:
 
 | Command | Prints |
 |---|---|
+| `url <repo>` | the repo's full name and the SSH URL git reaches it at, the one `publish` adds as `origin`, such as `git@github.com:me/app.git`. It's made from the name alone, so the repo needn't exist yet and the git host isn't asked; a bare name is in the default owner, which on GitHub is the account `gh` is logged in as |
 | `environments <repo>` | the repo's deployment environments |
 | `deployments <repo> <environment> [--since <date>]` | the deployments there, newest first, each with its commit, status (`succeeded`, `failed`, `stopped`, `in_progress`), and when it started and finished |
 | `merged <repo> [--base <branch>] [--since <date>]` | the pull requests merged since then, newest first, each with when it opened and merged and its merge commit |
 | `commits <repo> <base> <head>` | the commits in `head` and not in `base`, as `git log base..head`, newest first, each with when it was written |
 
-Each prints one JSON object per line, then its status line, so `grep '^{'` keeps only the data. `--since` is a date or time, in UTC unless it gives its offset, and 30 days ago unless given. The environment is matched ignoring case. Nothing is stored: each run asks the host.
+Each prints one JSON object per line, then its status line, so `grep '^{'` keeps only the data. `--since` is a date or time, in UTC unless it gives its offset, and 30 days ago unless given. The environment is matched ignoring case. Nothing is stored: each run asks the git host, but for `url`.
 
 They're the raw material for the DORA metrics. What a project needs for those, in Bitbucket and Jira, in its repository, in its team's habits and on the collecting machine, and which of those changes repo-tools can make with whose consent, is in dora-tools' [docs/requirements.md](../dora-tools/docs/requirements.md), and `dora check` checks a project against it.
 
-The hosts differ underneath:
+The git hosts differ underneath:
 
 - **GitHub** deployments are its deployments API, which Actions fills for each job that names an `environment:`. A deployment's status is its latest; GitHub marks a successful one inactive once a newer one succeeds, so inactive counts as succeeded. A workflow with several jobs in one environment makes a deployment for each.
 - **Bitbucket** deployments are those Pipelines records for each step with a `deployment:` environment. Bitbucket stops listing a deployment once its pipeline's artifacts expire, so older history can't be read back. It doesn't say when a pull request merged, so that's its merge commit's date, at a request per pull request.
@@ -165,10 +166,11 @@ Each repository needing attention is listed by its path from the root, in name o
 - ⛔ **commits on *trunk***: with PR integration, commits made on the trunk, which belong on a branch
 - 🔄 **behind *base***: HEAD lacks commits its base has, which repo-fix brings in
 - ⚡ **conflicts with *base***: HEAD is behind its base, and bringing the base's commits in would conflict
-- 🔃 **no pull request for *branch***, or ***host* couldn't say**: with PR integration, with `--fetch` only, for the branch checked out
+- 🔃 **no pull request for *branch***, or ***git host* couldn't say**: with PR integration, with `--fetch` only, for the branch checked out
 - 👻 **commits on detached HEAD**: commits reachable from no branch or remote
 - 📦 **stashes**
-- 🔌 **no remote**
+- 🔌 **no remote**: unless `.config/ianf-repo-tools.toml` keeps the repository on this computer only (see [Where origin is published](#where-origin-is-published))
+- 🧭 **origin is on *another git host or server***, or **no origin remote**: the worktree's `.config/ianf-repo-tools.toml` puts origin on a git host it isn't on, or **has a remote**, though it keeps the repository local (see [Where origin is published](#where-origin-is-published)); only you can tell which is right, so repo-fix leaves it
 - 📁 **not a git repository**: a directory that holds files but is in no repository, such as a project not yet initialised
 - 📡 **fetch failed**: with `--fetch` only
 - 💥 **git failed**: git couldn't read the repository
@@ -178,36 +180,39 @@ Each repository needing attention is listed by its path from the root, in name o
 - 🔖 ***n* commits since *version***, or **never released**: with a package flag, commits on the trunk since a package's latest version tag that change more than lock files, or a package with no version tag yet (see [Your packages](#your-packages))
 - 🔗 ***lock file* behind on *packages***: with a package flag, a lock file holding a package of yours at less than its latest (see [Your packages](#your-packages))
 
-Before the path, four icons say what kind of repository it is, explained here rather than on every line: its integration, the host of its remote, who can see the remote, and what kind of package it is, if any.
+Before the path, four icons say what kind of repository it is, explained here rather than on every line: its integration, the git host of its remote, who can see the remote, and what kind of dependency it is for other repositories, if any.
 
-| Integration | | Host | | Visibility | | Package | |
+| Integration | | RemoteRepo | | Visibility | | Dependency | |
 |---|---|---|---|---|---|---|---|
 | 🏠 | `direct` | 🐙 | GitHub | 🌐 | public | 🐘 | Composer |
 | 📏 | `pr-rebase` | 🦊 | GitLab | 🔒 | private | 🔴 | npm |
 | 🔀 | `pr-merge` | 🧺 | Bitbucket | | | 🐍 | Python |
 | 🔧 | none set, or one that doesn't exist | 🗻 | Codeberg | | | 🐹 | Go module |
-| | | 🔷 | Azure DevOps | | | 🧩 | Claude Code plugin |
-| | | ❔ | another host, such as your own server, or a path | | | 📋 | Copier template |
+| | | 🔷 | Azure DevOps | | | 📋 | Copier template |
+| | | ❔ | another git host or server, such as your own, or a path | | | ⛄ | Nix flake |
 | | | 🔌 | no remote | | | | |
+| | | 💻 | no remote, kept on this computer only | | | | |
 
-The host is told from the remote's URL. Who can see the remote is asked of GitHub or Bitbucket, so it's shown only with `--fetch`, and left blank for another host or one that can't say. Every worktree shows them, linked ones too. Every icon is from Unicode 11 or earlier, the widths VS Code's terminal knows, so the columns line up there.
+The git host is told from the remote's URL. Who can see the remote is asked of GitHub or Bitbucket, so it's shown only with `--fetch`, and left blank for another git host or server, or one that can't say. Every worktree shows them, linked ones too. Every icon is from Unicode 11 or earlier, the widths VS Code's terminal knows, so the columns line up there.
 
-The package icon is read from the manifests in the repository's working tree, by each ecosystem's own marker, so an app stays blank by saying so in its manifest, as it already does to stop an accidental publish:
+The dependency icon is read from the manifests in the repository's working tree, by each ecosystem's own marker, so an app stays blank by saying so in its manifest, as it already does to stop an accidental publish:
 
-| | Is a package when |
+| | Is a dependency when |
 |---|---|
 | 🐘 | `composer.json` has a `name`, and a `type` other than `project` |
 | 🔴 | `package.json` has a `name`, and isn't `"private": true` |
 | 🐍 | `pyproject.toml` has a `project.name` that another repository under the root pins from git |
 | 🐹 | `go.mod` has a `module` path that another repository under the root requires |
-| 🧩 | `.claude-plugin/plugin.json` has a `name` |
 | 📋 | `copier.yml` or `copier.yaml` is there |
+| ⛄ | `flake.nix` has an output for other flakes, or another repository under the root pins it from git |
 
-Python has no marker that tells a library from a command-line tool, as both have a build backend to be installed. So a Python project is a package once another repository depends on it from a git source, in `[tool.uv.sources]` or as a `git+` URL in the requirement, which its `uv.lock` pins to a commit. One that only path dependencies point at isn't, as its dependants read it as it is on disk.
+Python has no marker that tells a library from a command-line tool, as both have a build backend to be installed. So a Python project is a dependency once another repository depends on it from a git source, in `[tool.uv.sources]` or as a `git+` URL in the requirement, which its `uv.lock` pins to a commit. One that only path dependencies point at isn't, as its dependants read it as it is on disk.
 
-Go has no marker that tells a library from a command either, so a Go module is a package once another repository's `go.mod` requires it, unless a `replace` directive there reads it from a path. A module copied once, as `gonew` copies a template, has no dependants and isn't one.
+Go has no marker that tells a library from a command either, so a Go module is a dependency once another repository's `go.mod` requires it, unless a `replace` directive there reads it from a path. A module copied once, as `gonew` copies a template, has no dependants and isn't one.
 
-A repository that is several kinds shows each, side by side, and the column widens to fit; it's left out altogether when no repository listed is a package. Whose package it is doesn't matter here: a package of another vendor's still shows its icon, though only yours are checked against [Packagist](#packagist) and [npm](#npm). Each worktree shows its own, as its branch may make it a different kind. repo-fix reads the same manifests, through `repo_tools.packages`, to decide what to publish.
+A flake is a dependency once it has an output that other flakes can use, such as `lib`, `packages` or `overlays`, and not only those for working on it: `devShells`, `checks`, `formatter` or `hydraJobs`. So an app whose flake gives only its dev shell stays blank. Nix lists the outputs without evaluating them, building anything or reaching the network, in about 50ms, from the files git tracks, so a `flake.nix` not yet added to git can't be listed. A flake Nix can't list, as when Nix isn't installed or the flake has an error, is a dependency only once another repository's `flake.lock` pins it. A flake has no name of its own, so its dependants name it by where they fetch it from, such as `github.com/me/kit`, and it's matched with them by its remote's URL: its `origin`, or with none, its only remote. The ⛄ stands in for Nix's snowflake, as ❄ is a narrow character that VS Code's terminal draws two columns wide, which would put the columns out of line.
+
+A repository that is several kinds shows each, side by side, and the column widens to fit; it's left out altogether when no repository listed is a dependency. Whose dependency it is doesn't matter here: a package of another vendor's still shows its icon, though only yours are checked against [Packagist](#packagist) and [npm](#npm). Each worktree shows its own, as its branch may make it a different kind. repo-fix reads the same manifests, through `repo_tools.dependencies`, to decide what to publish.
 
 After the path is what each repository has checked out: its branch, or `@` and the commit for a detached HEAD, such as `@3f2a1c9`. It's shown, never counted as needing attention; commits only a detached HEAD has are reported as 👻. The trunk is grey, so any other branch stands out. 🤖 **Claude working** follows it when a Claude Code session is busy there, as recorded by the [worktree-hooks](../../claude/worktree-hooks) plugin; repo-fix then leaves the directory alone. 💤 **repo-fix skips** follows it when the directory's `.config/ianf-repo-tools.toml` sets `skip-fix = true`, which repo-fix leaves alone too, while repo-list still reports what needs attention; see [Worktrees and integration](#worktrees-and-integration).
 
@@ -230,6 +235,9 @@ How a branch's work reaches the trunk is the integration, which each repository 
 version = 1                 # the version of this file's format: see schema/
 integration = "direct"
 skip-fix = false            # true: repo-fix leaves this worktree alone; false when left out
+
+[remotes.origin]
+git-host = "github"            # where repo-fix publishes it, while it has no remote: github, bitbucket, or none to keep it here
 ```
 
 There's no default, and no machine-wide setting, as a wrong guess would push or rewrite the wrong things. So repo-list and repo-fix ask, on the terminal, for the integration of each worktree whose copy sets none, one at a time once everything's been checked: the arrows pick an integration and Enter chooses it. The integration chosen is set in that worktree's copy, creating it if it's missing and keeping the rest of it as it was, and the worktree is then reported and fixed in that integration; commit the file to share it. Choosing skip, or running with no terminal to ask at, as an agent does, leaves it unset: it's reported as 🔧 and left alone by repo-fix, and asked about again next time. A copy whose integration is wrong isn't asked about, as the file needs fixing by hand.
@@ -242,6 +250,14 @@ There's no default, and no machine-wide setting, as a wrong guess would push or 
 
 With PR integration a detached HEAD isn't caught up or pushed: it needs a branch first, and its commits are reported as 👻.
 
+### Where origin is published
+
+`[remotes.origin] git-host` says which git host a repository's origin is on: `github`, published with `github publish` under the account `gh` is logged in as, or `bitbucket`, with `bitbucket publish` in the `bitbucket.workspace` of your config. repo-fix publishes a repository with no remote there. `none` keeps the repository on this computer only: repo-fix never publishes it nor asks where to, and repo-list counts its having no remote as clean, showing 💻 in place of 🔌. As there are no pull requests without a remote, `none` needs `integration = "direct"`, and is reported as 🔧 with any other. Before it fixes anything, it asks on the terminal, as it asks for an integration, for the git host of each worktree with no remote whose copy names none, and sets the one chosen in that copy. With direct integration it also offers none, which keeps the repository local and stops the asking. Choosing skip, or running with no terminal to ask at, leaves it unpublished, and asks again next time. A directory `--init` makes a repository is asked for its integration and then its git host before its first commit, so both go in with it.
+
+Once origin exists, its URL says where it is, so the setting matters only until then, and a repository published before it existed needs none. When one is set, repo-list checks origin against it, and reports 🧭 when origin is on another git host or server, there are remotes but no origin, or a repository set to `none` has a remote.
+
+Remotes are keyed by name so that a mirror could be named beside origin later without a new version of the file. Only `origin` can be set for now.
+
 ### Packagist
 
 A repository whose `composer.json` names a package of your Packagist vendor's, `packagist.vendor` in the [config](#config), should be on Packagist, offering every version tag and the latest commit of every branch on `origin`. Which repositories those are is read from the repositories themselves, so there's nothing to configure as packages come and go. The check is [`packagist update`](#packagist-update-dir)'s. It needs the network, so it runs only with `--packagist`, and not for a repository whose fetch failed. A `composer.json` of `"type": "project"` is an app, not a package, so it isn't checked.
@@ -252,20 +268,20 @@ A repository whose `package.json` names a package in your npm scope, `npm.scope`
 
 ### Your packages
 
-Each kind of package has a flag: `--packagist` for Composer, `--npm` for npm, `--python` for Python and `--go` for Go. `--packages` turns on every one, including any kind added later. For each kind chosen, on the trunk with direct integration:
+Each ecosystem has a flag: `--packagist` for Composer, `--npm` for npm, `--python` for Python, `--go` for Go and `--nix` for Nix flakes. `--dependencies` turns on every one, including any kind added later. For each kind chosen, on the trunk with direct integration:
 
-- A package of yours with commits since its latest version tag, or with none yet, is 🔖. Only Composer, npm and Go packages count, as they reach their dependants by version tag; a Python package is pinned from git, so its commits reach them as they are. Commits that change nothing but lock files, counting Go's `go.mod` and `go.sum` as lock files, don't count: a package's lock file never reaches the projects that use it, and releasing for one would pass each upgrade on down the chain of dependants, and round any that pin each other forever.
-- A project whose lock file (`composer.lock`, `package-lock.json`, `uv.lock` or Go's `go.mod`) holds a package of yours from another repository here at less than its latest is 🔗: below its highest version tag, or for a Python package pinned from a git branch, at a commit other than its trunk's upstream. One pinned to a tag or commit in `pyproject.toml` doesn't count, as no upgrade moves it.
+- A package of yours with commits since its latest version tag, or with none yet, is 🔖. Only Composer, npm and Go packages count, as they reach their dependants by version tag; a Python package or a flake is pinned from git, so its commits reach them as they are. Commits that change nothing but lock files, counting Go's `go.mod` and `go.sum` as lock files, don't count: a package's lock file never reaches the projects that use it, and releasing for one would pass each upgrade on down the chain of dependants, and round any that pin each other forever.
+- A project whose lock file (`composer.lock`, `package-lock.json`, `uv.lock`, Go's `go.mod` or `flake.lock`) holds a package of yours from another repository here at less than its latest is 🔗: below its highest version tag, or for a Python package or a flake pinned from a git branch, at a commit other than its trunk's upstream. One pinned to a tag or commit in `pyproject.toml` or `flake.nix` doesn't count, as no upgrade moves it. 🔗 only reports: repo-fix upgrades every lock file in full whatever the flags (see 📌 in [repo-fix](#repo-fix)), so after it a 🔗 is what that upgrade couldn't reach, such as a new major version the project's constraint excludes, which needs its manifest changed.
 
-Yours means your Packagist vendor's, your npm scope's, or for Python and Go any package another repository here pins.
+Yours means your Packagist vendor's, your npm scope's, for Python and Go any package another repository here pins, and any flake here.
 
 ### Usage
 
 ```
-repo-list [-a|--all] [-f|--fetch] [-p|--packagist] [--npm] [--python] [--go] [--packages] [<root>]
+repo-list [-a|--all] [-f|--fetch] [--packagist] [--npm] [--python] [--go] [--nix] [--dependencies] [<path>]
 ```
 
-`root` defaults to the configured root, wherever you run it from. `-a` lists clean repositories too. `-f` runs `git fetch --all` in every repository first, eight at a time, so the behind counts are current. `--packagist` checks each package against Packagist, and `--npm` against npm; with `--python` and `--go` too, each also checks [your packages](#your-packages), and `--packages` does all four. Without `-f`, `--packagist`, `--npm` or `--packages`, nothing touches the network.
+`path` is a repository, or a directory to search; it defaults to the configured root, wherever you run it from. `-a` lists clean repositories too. `-f` runs `git fetch --all` in every repository first, eight at a time, so the behind counts are current. `--packagist` checks each package against Packagist, and `--npm` against npm; with `--python`, `--go` and `--nix` too, each also checks [your packages](#your-packages), and `--dependencies` does all five. Without `-f`, `--packagist`, `--npm` or `--dependencies`, nothing touches the network.
 
 Exit status: 0 all clean, 1 something needs attention, 2 usage error.
 
@@ -274,26 +290,26 @@ Exit status: 0 all clean, 1 something needs attention, 2 usage error.
 Fixes what repo-list reports, in one repository or in every one under a directory.
 
 ```
-repo-fix [--init] [--no-ci-wait] [-p|--packagist] [--npm] [--python] [--go] [--packages] [<path>]
+repo-fix [--init] [--no-ci-wait] [--packagist] [--npm] [--python] [--go] [--nix] [--dependencies] [<path>]
 ```
 
 `path` is a repository, or a directory to search as repo-list does; it defaults to the configured root, wherever you run it from. Every repository is fetched first, once for all of its worktrees. Then each directory is fixed, a repository's worktrees one after another, the one that updates the trunk first: the one with it checked out, or else the main worktree. So the others catch up with the trunk as it now is, and if updating it fails, nothing is caught up with it.
 
-Repositories go in name order, except that each one another pins as a dependency goes before it, and that one's own pinned dependencies before that, so each is pushed by the time its dependants' turn comes. A dependency is pinned when the dependant's lock file holds it at a version or commit: from a git source for Python; a `go.mod` requirement for Go, though not one a `replace` directive reads from a path; from Packagist or a VCS repository for Composer, though not one `composer.lock` reads from a path; from the registry or git for npm, though not `file:`, `link:`, `workspace:`, `portal:` or a path. One read from a path counts for neither the order nor the 🐍 or 🐹, since its dependants see it as it is on disk. That way a dependant's lock file can upgrade to what its dependencies just pushed, released and published: a dependant is checked again once a repository it pins has been fixed. Repositories that depend on each other, directly or through others, are said to, and keep their name order among themselves. A dependant is fixed even when its dependency's fix failed, as its own work may have nothing to do with it.
+Repositories go in name order, except that each one another pins as a dependency goes before it, and that one's own pinned dependencies before that, so each is pushed by the time its dependants' turn comes. A dependency is pinned when the dependant's lock file holds it at a version or commit: from a git source for Python; a `go.mod` requirement for Go, though not one a `replace` directive reads from a path; from Packagist or a VCS repository for Composer, though not one `composer.lock` reads from a path; from the registry or git for npm, though not `file:`, `link:`, `workspace:`, `portal:` or a path; an input of the root in `flake.lock` from git, GitHub, GitLab or SourceHut for Nix, though not one from a path, a tarball or the flake registry. One read from a path counts for neither the order nor the 🐍, 🐹 or ⛄, since its dependants see it as it is on disk. A flake's inputs' own inputs are locked from their `flake.lock`, so the order matters there too: a flake upgraded before the flake it pins has upgraded gets nothing new from further down. That way a dependant's lock file can upgrade to what its dependencies just pushed, released and published: a dependant is checked again once a repository it pins has been fixed. Repositories that depend on each other, directly or through others, are said to, and keep their name order among themselves. A dependant is fixed even when its dependency's fix failed, as its own work may have nothing to do with it.
 
 In each:
 
 | Problem | Fix |
 |---|---|
 | 📝 uncommitted files | Claude Code's `/ianf-commit` skill, run headless (`claude --print /ianf-commit`) |
-| 🔌 no remote | `github publish`, so public and waiting for CI unless `--no-ci-wait` |
+| 🔌 no remote | `github publish` or `bitbucket publish`, for the git host `[remotes.origin]` names in `.config/ianf-repo-tools.toml`, asked for when it names none, and not at all for `none` (see [Where origin is published](#where-origin-is-published)); so public, and waiting for CI unless `--no-ci-wait` |
 | 📥 behind | fast-forwarded to the upstream, whether the branch is checked out or not; with direct integration, a trunk checked out here with commits of its own has them rebased onto the upstream |
 | 🔄 behind its base | rebased onto it, or with `pr-merge` integration the base merged in; one that stops at a conflict is undone |
 | 📤 unpushed | pushed to the upstream, with a lease after a rebase with `pr-rebase` integration; a branch with none is pushed to the only remote and tracks it |
 | 🔃 no pull request | opened as a draft, through `gh` on GitHub or the API on Bitbucket, whose token then needs `write:pullrequest:bitbucket` |
-| 📌 *n* upgrades for uv.lock | on the trunk with direct integration only, once it's level with its upstream: `uv lock --upgrade`, run in the project's devbox, then `uv.lock` committed alone as "Upgrade the locked dependencies", listing each upgrade, and pushed. A project with a `uv.lock` but no `devbox.json` is reported as 📌 no devbox.json to run uv in, and one whose dry run fails as 📌 uv.lock check failed |
-| 📁 not a git repository | with `--init` only: `git init`, then committed and published |
-| 🔗 *lock file* behind on *packages* | with a package flag, on the trunk with direct integration, once it's level with its upstream: just those packages upgraded with the ecosystem's tool in the project's devbox (`composer update --no-install`, `npm update --package-lock-only`, `uv lock --upgrade-package` or `go get <module>@latest`, which asks each module's repository directly, as the module proxy can lag a release), then the lock file committed alone, with Go's `go.sum`, as "Upgrade *packages*", listing each, and pushed. A tool that leaves the lock file as it was, as when the project's constraint excludes a new major version, is reported, and the manifest left for you |
+| 📌 *n* upgrades for *lock file* | for `composer.lock`, `package-lock.json`, `uv.lock`, Go's `go.mod` and `flake.lock`, at the top of the repository, on the trunk with direct integration only, once it's level with its upstream: every package upgraded as far as the manifest's constraints allow, with `composer update --no-install --no-scripts`, `npm update --package-lock-only --ignore-scripts`, `uv lock --upgrade`, `go get -u -t ./...`, which asks the repository of each Go module here directly, through `GONOPROXY`, as the module proxy can lag a release, or `nix flake update`, which moves every input, `nixpkgs` too. Then what the lock files hold is installed, as below, and the project's `check` task run, if it has one. If either fails, the lock files go back as they were, and so does what's installed. Otherwise they're committed together, with Go's `go.sum`, as "Upgrade the locked dependencies", listing each upgrade, and pushed. Whether there's anything to upgrade comes from a dry run: Composer's and uv's own, npm's upgrade of copies of `package.json` and `package-lock.json`, Go's of copies of `go.mod` and `go.sum`, through `-modfile`, and Nix's writing the lock file it would to a scratch directory, through `--output-lock-file`. Each tool runs in the project's devbox, but for Nix, which devbox itself runs on, so is the machine's own, with flakes turned on whatever its config says: a lock file on the trunk with no `devbox.json`, other than a `flake.lock`, is reported as 📌 no devbox.json to run *tool* in, and one whose dry run fails as 📌 *lock file* check failed, followed by the last line the tool wrote, such as Go's saying the upgrade needs a newer Go than the devbox pins |
+| 📌 *dependencies* behind *lock file* | in any worktree, dependencies that were installed but differ from what the lock file holds, as after a fast-forward brought in an upgrade made elsewhere: `composer install`, `npm ci` or `uv sync --frozen`, in the project's devbox, running the packages' own scripts. `vendor` and `node_modules` are compared with the lock file by what Composer and npm record there of what they installed, and `.venv` by `uv sync --check`. Dependencies never installed are left so. Go and Nix have nothing of their own to fall behind, as Go's module cache and the Nix store are shared, and fill as each project builds; after an upgrade, `go mod download` or `nix flake archive` fills them |
+| 📁 not a git repository | with `--init` only: `git init`, asked for its integration and git host, then committed and published |
 | 🔖 *n* commits since *version* | with a package flag, on the trunk with direct integration, once pushed: `github release <dir> patch`, or `bitbucket release` for a repository on Bitbucket, which tags `HEAD` as the next patch version, v0.0.1 for a package never released, and pushes the tag. Releasing comes before Packagist and npm are told, so a package new to npm has the version tag `npmjs publish` needs. Minor and major versions are yours to release |
 | 🐘 Packagist | with `--packagist` only, after releasing: `packagist publish`, which also adds a missing webhook, then `packagist update`, which waits until Packagist has what was pushed |
 | 🔴 npm | with `--npm` only, after releasing: for a package not on npm, `npmjs publish`, which needs your terminal for npm's one-time passwords and a version tag at `HEAD`; then `npmjs wait`, which waits until the package's publish workflow has published every version tag |
@@ -348,8 +364,8 @@ Setup also copies `config.example.toml` to `config.toml`, if you have none, for 
 | Setting | Default | What for |
 |---|---|---|
 | `root` | `~/projects` | where repo-list and repo-fix look when given no directory |
-| `packagist.vendor` | none | whose packages `--packagist` checks; `--packagist` or `--packages` without it is a usage error |
-| `npm.scope` | none | whose packages `--npm` checks, such as `@me`; `--npm` or `--packages` without it is a usage error |
+| `packagist.vendor` | none | whose packages `--packagist` checks; `--packagist` or `--dependencies` without it is a usage error |
+| `npm.scope` | none | whose packages `--npm` checks, such as `@me`; `--npm` or `--dependencies` without it is a usage error |
 | `bitbucket.workspace` | none | the workspace `bitbucket publish` creates repos in, and a bare repo name is in |
 | `description.provider` | `claude` | who writes a new GitHub or Bitbucket repo's description when its manifest has none: `claude`, through Claude Code signed in as you; `openai`, `gemini` or `mistral`, through their APIs with a key from your credential store, which the first use says how to store; or `none` |
 
@@ -439,18 +455,20 @@ When an agent such as Claude Code may run these commands, each check stops a dif
 ```
 src/
 ├── repo_tools/
-│   ├── forge.py          the interface every code host's delivery data is read through
-│   ├── forge_commands.py the delivery commands, written once against it
-│   ├── clone.py          a local clone's origin, and pushing from it, on any host
+│   ├── git_host_api.py          the interface every git host's delivery data is read through
+│   ├── git_host_commands.py the delivery commands, written once against it
+│   ├── clone.py          a local clone's origin, and pushing from it, on any git host
 │   ├── versions.py       version tags, and the next one at each level
 │   ├── manifest.py       a project's description and Composer package name
+│   ├── dependencies.py   which kinds of dependency a project is, and what it pins, read from
+│   │                     its manifests and lock files
 │   ├── github/
 │   │   ├── api.py        GitHub operations, also called by packagist
-│   │   ├── forge.py      GitHub's Forge
+│   │   ├── git_host_api.py      GitHub's GitHostApi
 │   │   └── commands/     publish.py, release.py, rename.py, archive.py, delete.py
 │   ├── bitbucket/
 │   │   ├── api.py        Bitbucket Cloud's REST API
-│   │   ├── forge.py      Bitbucket's Forge
+│   │   ├── git_host_api.py      Bitbucket's GitHostApi
 │   │   └── commands/     publish.py, release.py, rename.py, delete.py
 │   ├── packagist/
 │   │   ├── api.py        Packagist operations, also called by repo-list
@@ -463,14 +481,17 @@ src/
     │                     running the plugins' checks of each
     ├── integration.py    the integrations: what each directory reports about its branches,
     │                     what repo-fix does about it, and in what order; pure
-    ├── dependencies.py   the order repo-fix takes repositories in, dependencies first; pure
-    ├── ecosystems.py     each kind of package: its flag, which are yours, releasing it, and
-    │                     upgrading it in a lock file
+    ├── fix_order.py      the order repo-fix takes repositories in, dependencies first; pure
+    ├── ecosystems.py     each ecosystem: its flag, which of its packages are yours, releasing
+    │                     one, upgrading a lock file and installing what that holds
     ├── agents.py         whether a Claude Code session is busy in a directory
-    ├── hosts.py          GitHub and Bitbucket: a repo's visibility, and its pull requests
+    ├── remote_repos.py          GitHub and Bitbucket: a repo's visibility, and its pull requests
+    ├── git_hosts.py         the git hosts origin can be published on, and which a URL is on; pure
+    ├── ask_integration.py, ask_git_host.py
+    │                     asking on the terminal for an unset integration, or git host
     ├── plugin.py         what a plugin is, and the stages repo-fix runs fixes in
-    ├── plugins/          init, github, uncommitted, sync, proposal, detached, stashes, lock,
-    │                     dependants, release, packagist, npm
+    ├── plugins/          init, publish, uncommitted, sync, proposal, detached, stashes, lock,
+    │                     dependants, release, dependency, packagist, npm
     ├── git.py
     ├── report.py
     ├── config.py
@@ -479,17 +500,18 @@ src/
 
 Everything repo-list reports, other than a failed fetch or git failing to read a repository, is found by a plugin, and everything repo-fix does is a plugin's fix. To add one, add a module to `plugins/` with a class following `Plugin` in `plugin.py`, whose problems each `describe()` themselves, and list it in `plugins/__init__.py`, in the order its problems should be shown. Its `stage` sets when its fix runs.
 
-A kind of package is a member of `Ecosystem` in `repo_tools/packages.py`. Adding one fails the type check at each `match` in `ecosystems.py` and `plugins/__init__.py` until it says what the new kind's flag, lock file, upgrade command and registry are; it then has its own flag, and `--packages` includes it.
+An ecosystem is a member of `Ecosystem` in `repo_tools/dependencies.py`. Adding one fails the type check at each `match` in `ecosystems.py` and `plugins/__init__.py` until it says what the new kind's flag, lock file, upgrade, dry-run and install commands and registry are; it then has its own flag, and `--dependencies` includes it.
 
-To read something new from every code host, add an abstract method to `Forge` in `forge.py`, implement it in each host's `forge.py`, and state it in `tests/repo_tools/test_forge_contract.py`, which runs every test against every host. A host left without it fails as soon as it's made. Adding a host is a subclass of `Forge` and a fake for it in that test.
+To read something new from every git host, add an abstract method to `GitHostApi` in `git_host_api.py`, implement it in each git host's `git_host_api.py`, and state it in `tests/repo_tools/test_git_host_api_contract.py`, which runs every test against every git host. A git host left without it fails as soon as it's made. Adding a git host is a subclass of `GitHostApi` and a fake for it in that test, and, for repo-fix to publish there, a member of `GitHost` in `repo_list/git_hosts.py`, which fails the type check at each `match` on it until it's given its name, domain and command, and the schema's `git-host` enum, which `tests/repo_list/test_schema.py` holds to it.
 
-To add a command to `github`, `bitbucket`, `packagist` or `npmjs`, add a module to the service's `commands/` with a `register(subparsers)` function, and list it in that service's `__main__.py`. Put GitHub or Packagist calls another command might need in its `api.py`, and call them from there rather than running the other command. What's the same on every host, such as git and version tags, goes in the modules beside the services, not in one service's.
+To add a command to `github`, `bitbucket`, `packagist` or `npmjs`, add a module to the service's `commands/` with a `register(subparsers)` function, and list it in that service's `__main__.py`. Put GitHub or Packagist calls another command might need in its `api.py`, and call them from there rather than running the other command. What's the same on every git host, such as git and version tags, goes in the modules beside the services, not in one service's.
 
 ## Development
 
 ```sh
 devbox run -- task test   # pytest
 devbox run -- task lint   # ruff check and format
+devbox run -- task check  # lint, then test, failing on any problem
 ```
 
 `tests/repo_tools` and `tests/repo_list` are kept apart because repo-list's `conftest.py` has autouse fixtures, which point HOME at a temporary directory and fake Packagist and npm. Tests use `--import-mode=importlib`, so test files in the two directories can share names; share test helpers through fixtures in `conftest.py`, not by importing it.

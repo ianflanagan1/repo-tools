@@ -11,7 +11,6 @@ files alone aren't released: see ecosystems.needs_release.
 """
 
 import subprocess
-import sys
 from collections.abc import Set
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,14 +18,14 @@ from pathlib import Path
 from repo_list import ecosystems
 from repo_list.config import Config
 from repo_list.git import git
+from repo_list.git_hosts import git_host_at
 from repo_list.plugin import Log, Plugin, Problem, Stage, count
-from repo_list.plugins import github
+from repo_list.plugins import publish
 from repo_list.plugins.lock import on_direct_trunk
 from repo_list.scan import Directory
 from repo_tools import versions
-from repo_tools.packages import Ecosystem, Name
+from repo_tools.dependencies import Ecosystem, Name
 
-BITBUCKET = str(Path(sys.prefix) / "bin" / "bitbucket")
 LEVEL = "patch"
 
 
@@ -46,11 +45,15 @@ class Release(Plugin):
     name = "release"
     stage = Stage.RELEASE
 
-    def __init__(self, chosen: Set[Ecosystem], settings: Config, pinned: Set[Name]) -> None:
+    def __init__(
+        self, chosen: Set[Ecosystem], settings: Config, pinned: Set[Name], offering: Set[Path]
+    ) -> None:
         self.chosen = chosen
         self.settings = settings
         self.pinned = pinned
         """Every name the directories found pin, which makes a Python project a package."""
+        self.offering = offering
+        """Every directory found whose flake has an output for other flakes."""
 
     def check(self, directory: Directory) -> list[Problem]:
         """The commits since the latest version worth releasing, or every commit of a package
@@ -59,7 +62,7 @@ class Release(Plugin):
         repo = directory.path
         if not on_direct_trunk(directory):
             return []
-        names = ecosystems.yours(repo, self.chosen, self.settings, self.pinned)
+        names = ecosystems.yours(repo, self.chosen, self.settings, self.pinned, self.offering)
         if not any(ecosystems.releases_by_tag(name.ecosystem) for name in names):
             return []
         tags = [t for t in git(repo, "tag", "--merged", "HEAD").split() if versions.is_version(t)]
@@ -72,7 +75,7 @@ class Release(Plugin):
         return [Unreleased(since, int(git(repo, "rev-list", "--count", f"{since}..HEAD")))]
 
     def fix(self, directory: Directory, problems: list[Problem], log: Log) -> bool:
-        """Releases HEAD as the next patch version on origin's host. Says whether it worked."""
+        """Releases HEAD as the next patch version on origin's git host. Says whether it worked."""
         repo = directory.path
         url = git(repo, "config", "--get", "remote.origin.url", check=False)
         command = command_for(url)
@@ -93,9 +96,6 @@ class Release(Plugin):
 
 
 def command_for(url: str) -> str | None:
-    """The command that releases the repository at origin url, or None for a host with none."""
-    if "github.com" in url:
-        return github.GITHUB
-    if "bitbucket.org" in url:
-        return BITBUCKET
-    return None
+    """The command that releases the repository at origin url, or None for a git host with none."""
+    git_host = git_host_at(url)
+    return None if git_host is None else publish.command(git_host)

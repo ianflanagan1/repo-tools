@@ -5,9 +5,11 @@ is read, and an empty `~/projects`, `projects.root`, to be searched. Tests run f
 Bare remotes go in `projects.remotes`, outside the searched directory. The project's config.toml is
 `projects.config`, naming the Packagist vendor `me` and the npm scope `@me`. Each repository
 made sets its integration, direct, in a committed .config/ianf-repo-tools.toml;
-`projects.integration` sets another, or none, for the repositories made after it. Packagist and npm
-are faked: see `packagist` and `npm`. So is the terminal a choice is made on: with no answers
-given to `terminal`, there's none, as when an agent runs the command.
+`projects.integration` sets another, or none, for the repositories made after it. A repository
+made with no remote also puts origin on GitHub there, as [remotes.origin] git-host;
+`projects.git_host` sets another, or none. A pushed one names no git host, as its origin is a
+path. Packagist and npm are faked: see `packagist` and `npm`. So is the terminal a choice is made
+on: with no answers given to `terminal`, there's none, as when an agent runs the command.
 Plugins can be faked too: see `plugin`.
 """
 
@@ -46,6 +48,7 @@ class Projects:
         self.config = tmp_path / "config.toml"
         self.config.write_text(CONFIG)
         self.next_integration: str | None = "direct"
+        self.next_git_host: str | None = "github"
         self.root.mkdir()
         self.remotes.mkdir()
 
@@ -53,6 +56,11 @@ class Projects:
         """Sets the integration of the repositories made after this, or with None leaves
         it unset."""
         self.next_integration = integration
+
+    def git_host(self, git_host: str | None) -> None:
+        """Sets the git host of origin of the repositories made after this with no remote, or with
+        None leaves it unset."""
+        self.next_git_host = git_host
 
     def worktree(self, repo: Path, name: str, *args: str) -> Path:
         """A linked worktree of repo under the root, added with args, such as --detach or
@@ -80,18 +88,24 @@ class Projects:
 
     def local_repo(self, name: str) -> Path:
         """A repository under the root with one commit and no remote."""
+        return self._repo(name, self.next_git_host)
+
+    def _repo(self, name: str, git_host: str | None) -> Path:
+        """A repository under the root with one commit, whose settings put origin on git_host."""
         repo = self.root / name
         git("init", "--quiet", repo)
-        if self.next_integration:
+        lines = [f'integration = "{self.next_integration}"'] if self.next_integration else []
+        lines += [f'\n[remotes.origin]\ngit-host = "{git_host}"'] if git_host else []
+        if lines:
             (repo / ".config").mkdir()
-            settings = f'version = 1\nintegration = "{self.next_integration}"\n'
+            settings = "version = 1\n" + "\n".join(lines) + "\n"
             (repo / ".config" / "ianf-repo-tools.toml").write_text(settings)
         self.commit(repo, "init")
         return repo
 
     def pushed_repo(self, name: str) -> Path:
         """A repository under the root with one commit, pushed to its own bare origin."""
-        repo = self.local_repo(name)
+        repo = self._repo(name, None)
         origin = self.origin(repo)
         git("init", "--quiet", "--bare", origin)
         git("-C", repo, "remote", "add", "origin", origin)
@@ -148,6 +162,29 @@ class Projects:
         git("-C", repo, "commit", "--quiet", "--message", "pyproject.toml")
         git("-C", repo, "push", "--quiet")
         return repo
+
+    def flake(self, name: str, flake_nix: str) -> Path:
+        """A pushed repository whose flake.nix is flake_nix, locked by the real Nix."""
+        repo = self.pushed_repo(name)
+        (repo / "flake.nix").write_text(flake_nix)
+        git("-C", repo, "add", "flake.nix")
+        nix = ["nix", "--extra-experimental-features", "nix-command flakes"]
+        subprocess.run([*nix, "flake", "lock"], cwd=repo, check=True, capture_output=True)
+        git("-C", repo, "add", "--all")
+        git("-C", repo, "commit", "--quiet", "--message", "Flake")
+        git("-C", repo, "push", "--quiet")
+        return repo
+
+    def kit_and_app(self) -> tuple[Path, Path]:
+        """A flake kit with an output for others, and a flake app with only a dev shell, which
+        pins kit from its origin."""
+        kit = self.flake("kit", "{ outputs = { self }: { lib.root = self.outPath; }; }\n")
+        app = self.flake(
+            "app",
+            f'{{ inputs.kit.url = "git+file://{self.origin(kit)}";\n'
+            "  outputs = { self, kit }: { devShells = {}; }; }\n",
+        )
+        return kit, app
 
     @staticmethod
     def short_head(repo: Path) -> str:

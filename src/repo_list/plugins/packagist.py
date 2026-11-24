@@ -15,8 +15,8 @@ from cli_kit.outcome import Failure
 from repo_list.git import git
 from repo_list.plugin import Log, Plugin, Problem, Stage
 from repo_list.scan import Directory
-from repo_tools import packages
-from repo_tools.packages import ComposerPackage
+from repo_tools import dependencies
+from repo_tools.dependencies import ComposerPackage
 from repo_tools.packagist import api as packagist
 
 PACKAGIST = str(Path(sys.prefix) / "bin" / "packagist")
@@ -84,7 +84,7 @@ class Packagist(Plugin):
 
 def package_name(repo: Path, vendor: str) -> str | None:
     """The name of the repository's Composer package, if it is one of vendor's."""
-    for package in packages.discover(repo, frozenset()):
+    for package in dependencies.discover(repo, frozenset(), frozenset()):
         if isinstance(package, ComposerPackage) and package.name.startswith(f"{vendor}/"):
             return package.name
     return None

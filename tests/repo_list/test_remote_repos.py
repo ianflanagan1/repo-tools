@@ -1,8 +1,8 @@
-"""Behaviour of telling a remote's host from its URL."""
+"""Behaviour of telling a remote repo from its URL, and its icon."""
 
 import pytest
 
-from repo_list.hosts import GitHub, NotOpened, Unknown, host_icon
+from repo_list.remote_repos import GitHub, NotOpened, Unknown, git_host_icon
 from repo_list.report import width
 from repo_tools.github import api as github
 
@@ -21,23 +21,23 @@ from repo_tools.github import api as github
     ],
 )
 def test_each_known_host_is_told_by_its_domain_in_ssh_or_https_form(url, icon):
-    assert host_icon(url) == icon
+    assert git_host_icon(url) == icon
 
 
 @pytest.mark.parametrize(
     "url", ["git@git.example.com:me/a.git", "/srv/git/a.git", "file:///srv/git/a.git", ""]
 )
 def test_any_other_host_or_a_path_is_another_host(url):
-    assert host_icon(url) == "❔"
+    assert git_host_icon(url) == "❔"
 
 
 def test_a_domain_that_only_contains_a_known_one_is_another_host():
-    assert host_icon("git@notgithub.com:me/a.git") == "❔"
+    assert git_host_icon("git@notgithub.com:me/a.git") == "❔"
 
 
-def test_every_host_icon_is_two_columns_wide():
+def test_every_git_host_icon_is_two_columns_wide():
     urls = ["github.com", "gitlab.com", "bitbucket.org", "codeberg.org", "dev.azure.com", "x"]
-    assert [width(host_icon(f"https://{u}/a")) for u in urls] == [2] * len(urls)
+    assert [width(git_host_icon(f"https://{u}/a")) for u in urls] == [2] * len(urls)
 
 
 def test_github_answers_unknown_rather_than_failing_when_gh_is_missing(monkeypatch):
@@ -47,7 +47,7 @@ def test_github_answers_unknown_rather_than_failing_when_gh_is_missing(monkeypat
     monkeypatch.setattr(github, "visibility", missing)
     monkeypatch.setattr(github, "open_pull_requests", missing)
     monkeypatch.setattr(github, "create_draft_pull_request", missing)
-    host = GitHub("me/a")
-    assert host.visibility() == Unknown("gh isn't installed")
-    assert host.open_for("feature") == Unknown("gh isn't installed")
-    assert host.open_draft("feature", "main", "t", "b") == NotOpened(("gh isn't installed",))
+    remote_repo = GitHub("me/a")
+    assert remote_repo.visibility() == Unknown("gh isn't installed")
+    assert remote_repo.open_for("feature") == Unknown("gh isn't installed")
+    assert remote_repo.open_draft("feature", "main", "t", "b") == NotOpened(("gh isn't installed",))

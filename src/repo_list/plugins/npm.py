@@ -15,9 +15,9 @@ from cli_kit.outcome import Failure
 from repo_list.git import git
 from repo_list.plugin import Log, Plugin, Problem, Stage
 from repo_list.scan import Directory
-from repo_tools import packages
+from repo_tools import dependencies
+from repo_tools.dependencies import NpmPackage
 from repo_tools.npmjs import api as npm
-from repo_tools.packages import NpmPackage
 
 NPMJS = str(Path(sys.prefix) / "bin" / "npmjs")
 
@@ -83,7 +83,7 @@ class Npm(Plugin):
 
 def package_name(repo: Path, scope: str) -> str | None:
     """The name of the repository's npm package, if it is one of scope's."""
-    for package in packages.discover(repo, frozenset()):
+    for package in dependencies.discover(repo, frozenset(), frozenset()):
         if isinstance(package, NpmPackage) and package.name.startswith(f"{scope}/"):
             return package.name
     return None

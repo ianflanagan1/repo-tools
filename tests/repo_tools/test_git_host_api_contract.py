@@ -1,8 +1,8 @@
-"""Every Forge adapter gives the same records for the same history, read from its host's own
-answers: GitHub's through faked gh calls, Bitbucket's through a faked API client.
+"""Every GitHostApi adapter gives the same records for the same history, read from its git host's
+own answers: GitHub's through faked gh calls, Bitbucket's through a faked API client.
 
-The history is written once, as the records it should come back as, and each host's fake
-answers with it in that host's shape.
+The history is written once, as the records it should come back as, and each git host's fake
+answers with it in that git host's shape.
 """
 
 import json
@@ -11,10 +11,10 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from cli_kit.outcome import Failure, Precondition
 
-from repo_tools.bitbucket import forge as bitbucket_forge
-from repo_tools.forge import Commit, Forge, Status
+from repo_tools.bitbucket import git_host_api as bitbucket_git_host_api
+from repo_tools.git_host_api import Commit, GitHostApi, Status
 from repo_tools.github import api as github_api
-from repo_tools.github import forge as github_forge
+from repo_tools.github import git_host_api as github_git_host_api
 
 REPO = "team/app"
 T = datetime(2026, 9, 1, 12, tzinfo=UTC)
@@ -52,15 +52,17 @@ COMMITS = [
 ]
 
 
-class GitHubHost:
+class GitHubGitHost:
     """gh, answering as GitHub would for the history."""
+
+    domain = "github.com"
 
     def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(github_api, "exists", lambda repo: repo == REPO)
-        monkeypatch.setattr(github_forge, "output", self.gh)
+        monkeypatch.setattr(github_git_host_api, "output", self.gh)
 
-    def forge(self) -> Forge:
-        return github_forge.GitHub()
+    def api(self) -> GitHostApi:
+        return github_git_host_api.GitHub()
 
     def gh(self, *args: str, input: str | None = None) -> str:
         if args[2:] == (f"repos/{REPO}", "--jq", ".default_branch"):
@@ -235,76 +237,83 @@ class BitbucketClient:
             }
 
 
-class BitbucketHost:
-    def forge(self) -> Forge:
-        return bitbucket_forge.Bitbucket(BitbucketClient())
+class BitbucketGitHost:
+    domain = "bitbucket.org"
+
+    def api(self) -> GitHostApi:
+        return bitbucket_git_host_api.Bitbucket(BitbucketClient())
 
 
 @pytest.fixture(params=["github", "bitbucket"])
-def host(request, monkeypatch: pytest.MonkeyPatch):
-    return GitHubHost(monkeypatch) if request.param == "github" else BitbucketHost()
+def git_host(request, monkeypatch: pytest.MonkeyPatch):
+    return GitHubGitHost(monkeypatch) if request.param == "github" else BitbucketGitHost()
 
 
-def test_names_the_repos_main_branch(host):
-    assert host.forge().main_branch(REPO) == "trunk"
+def test_gives_the_ssh_url_git_reaches_a_repo_at_whether_or_not_it_exists(git_host):
+    assert git_host.api().url(REPO) == f"git@{git_host.domain}:{REPO}.git"
+    assert git_host.api().url("team/new") == f"git@{git_host.domain}:team/new.git"
 
 
-def test_reads_a_committed_file_at_a_revision(host):
+def test_names_the_repos_main_branch(git_host):
+    assert git_host.api().main_branch(REPO) == "trunk"
+
+
+def test_reads_a_committed_file_at_a_revision(git_host):
     assert (
-        host.forge().file(REPO, "trunk", ".config/ianf-dora.toml")
+        git_host.api().file(REPO, "trunk", ".config/ianf-dora.toml")
         == FILES[("trunk", ".config/ianf-dora.toml")]
     )
 
 
-def test_a_file_the_revision_does_not_have_is_none(host):
-    assert host.forge().file(REPO, "trunk", "missing.toml") is None
+def test_a_file_the_revision_does_not_have_is_none(git_host):
+    assert git_host.api().file(REPO, "trunk", "missing.toml") is None
 
 
-def test_lists_the_environments(host):
-    assert host.forge().environments(REPO) == ["Production", "Staging"]
+def test_lists_the_environments(git_host):
+    assert git_host.api().environments(REPO) == ["Production", "Staging"]
 
 
-def test_lists_the_deployments_to_an_environment_since_a_time_newest_first(host):
-    found = host.forge().deployments(REPO, "Production", SINCE)
+def test_lists_the_deployments_to_an_environment_since_a_time_newest_first(git_host):
+    found = git_host.api().deployments(REPO, "Production", SINCE)
     assert [(d.environment, d.commit, d.status, d.started_at, d.finished_at) for d in found] == [
         d for d in DEPLOYMENTS if d[0] == "Production" and d[3] >= SINCE
     ]
 
 
-def test_matches_the_environment_ignoring_case(host):
-    found = host.forge().deployments(REPO, "production", SINCE)
+def test_matches_the_environment_ignoring_case(git_host):
+    found = git_host.api().deployments(REPO, "production", SINCE)
     assert {d.environment for d in found} == {"Production"}
 
 
-def test_every_deployment_links_to_where_it_ran(host):
+def test_every_deployment_links_to_where_it_ran(git_host):
     assert all(
-        d.url.startswith("https://") for d in host.forge().deployments(REPO, "Production", SINCE)
+        d.url.startswith("https://") for d in git_host.api().deployments(REPO, "Production", SINCE)
     )
 
 
-def test_lists_the_pull_requests_merged_since_a_time_newest_first(host):
-    found = host.forge().merged_pull_requests(REPO, SINCE)
+def test_lists_the_pull_requests_merged_since_a_time_newest_first(git_host):
+    found = git_host.api().merged_pull_requests(REPO, SINCE)
     assert [(p.number, p.base, p.opened_at, p.merged_at, p.merge_commit) for p in found] == [
         p for p in PULLS if p[3] >= SINCE
     ]
 
 
-def test_lists_only_the_pull_requests_merged_into_a_base(host):
-    found = host.forge().merged_pull_requests(REPO, SINCE, base="main")
+def test_lists_only_the_pull_requests_merged_into_a_base(git_host):
+    found = git_host.api().merged_pull_requests(REPO, SINCE, base="main")
     assert [p.number for p in found] == [12, 10]
 
 
-def test_lists_the_commits_between_two_revisions_newest_first_by_first_line(host):
-    assert host.forge().commits_between(REPO, "a", "b") == COMMITS
+def test_lists_the_commits_between_two_revisions_newest_first_by_first_line(git_host):
+    assert git_host.api().commits_between(REPO, "a", "b") == COMMITS
 
 
-def test_a_repo_the_host_does_not_have_is_a_precondition(host):
+def test_a_repo_the_git_host_does_not_have_is_a_precondition(git_host):
     with pytest.raises(Precondition):
-        host.forge().deployments("team/missing", "Production", SINCE)
+        git_host.api().deployments("team/missing", "Production", SINCE)
 
 
-def test_every_time_is_in_utc(host):
-    forge = host.forge()
-    times = [d.started_at for d in forge.deployments(REPO, "Production", SINCE)]
-    times += [p.merged_at for p in forge.merged_pull_requests(REPO, SINCE)]
+def test_every_time_is_in_utc(git_host):
+    api = git_host.api()
+    times = [d.started_at for d in api.deployments(REPO, "Production", SINCE)]
+    times += [p.merged_at for p in api.merged_pull_requests(REPO, SINCE)]
     assert all(t.tzinfo == UTC for t in times)

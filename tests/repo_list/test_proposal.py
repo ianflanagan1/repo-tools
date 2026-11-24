@@ -1,18 +1,20 @@
-"""Behaviour of opening pull requests where work goes by pull request, with the host faked."""
+"""Behaviour of opening pull requests where work goes by pull request, with the remote repo
+faked."""
 
 import subprocess
 from pathlib import Path
 
 import pytest
 
-from repo_list import fix, hosts
-from repo_list.hosts import NotOpened, Opened, Unknown, Visibility, proposal
+from repo_list import fix, remote_repos
+from repo_list.git_hosts import GitHost
+from repo_list.remote_repos import NotOpened, Opened, Unknown, Visibility, proposal
 
 
-class FakeHost:
-    """A host whose answers are set, recording each pull request opened."""
+class FakeRemoteRepo:
+    """A remote repo whose answers are set, recording each pull request opened."""
 
-    host = "GitHub"
+    git_host = GitHost.GITHUB
 
     def __init__(self) -> None:
         self.has_one: bool | Unknown = False
@@ -33,10 +35,10 @@ class FakeHost:
 
 
 @pytest.fixture
-def host(monkeypatch: pytest.MonkeyPatch) -> FakeHost:
-    host = FakeHost()
-    monkeypatch.setattr(hosts, "for_remote", lambda url: host)
-    return host
+def remote_repo(monkeypatch: pytest.MonkeyPatch) -> FakeRemoteRepo:
+    remote_repo = FakeRemoteRepo()
+    monkeypatch.setattr(remote_repos, "for_remote", lambda url: remote_repo)
+    return remote_repo
 
 
 def git(repo: Path, *args: str) -> str:
@@ -77,7 +79,7 @@ def test_several_commits_give_it_the_branch_as_title_and_list_their_subjects():
 
 
 def test_with_pr_integration_a_pushed_branch_without_a_pull_request_gets_a_draft(
-    projects, host, capsys
+    projects, remote_repo, capsys
 ):
     projects.integration("pr-merge")
     pushed_feature(projects, "feature work")
@@ -86,18 +88,18 @@ def test_with_pr_integration_a_pushed_branch_without_a_pull_request_gets_a_draft
         "  ✔ Opened a draft pull request for feature:",
         "    https://github.com/me/a/pull/1",
     ]
-    assert host.opened == [("feature", "main", "feature work", "- feature work")]
+    assert remote_repo.opened == [("feature", "main", "feature work", "- feature work")]
 
 
-def test_a_branch_with_a_pull_request_open_is_left_alone(projects, host, capsys):
+def test_a_branch_with_a_pull_request_open_is_left_alone(projects, remote_repo, capsys):
     projects.integration("pr-rebase")
     pushed_feature(projects, "feature work")
-    host.has_one = True
+    remote_repo.has_one = True
     assert progress(capsys) == []
-    assert host.opened == []
+    assert remote_repo.opened == []
 
 
-def test_a_branch_pushed_in_the_same_run_gets_its_draft_then(projects, host, capsys):
+def test_a_branch_pushed_in_the_same_run_gets_its_draft_then(projects, remote_repo, capsys):
     projects.integration("pr-merge")
     a = projects.pushed_repo("a")
     git(a, "checkout", "--quiet", "-b", "feature")
@@ -110,10 +112,12 @@ def test_a_branch_pushed_in_the_same_run_gets_its_draft_then(projects, host, cap
     ]
 
 
-def test_a_refused_pull_request_is_reported_with_what_the_host_said(projects, host, capsys):
+def test_a_refused_pull_request_is_reported_with_what_the_git_host_said(
+    projects, remote_repo, capsys
+):
     projects.integration("pr-merge")
     pushed_feature(projects, "feature work")
-    host.refuses = True
+    remote_repo.refuses = True
     assert progress(capsys) == [
         "a",
         "  ✘ Opening a pull request for feature failed:",
@@ -121,30 +125,30 @@ def test_a_refused_pull_request_is_reported_with_what_the_host_said(projects, ho
     ]
 
 
-def test_a_host_that_cannot_say_is_reported_with_why(projects, host, run):
+def test_a_git_host_that_cannot_say_is_reported_with_why(projects, remote_repo, run):
     projects.integration("pr-merge")
     pushed_feature(projects, "feature work")
-    host.has_one = Unknown("No GitHub token is stored.")
+    remote_repo.has_one = Unknown("No GitHub token is stored.")
     assert run("--fetch").listing == [
         "🔀 ❔ 🔒 a  feature  ✘ 🔃 GitHub couldn't say if feature has a pull request: "
         "No GitHub token is stored."
     ]
 
 
-def test_without_fetching_no_host_is_asked(projects, host, run):
+def test_without_fetching_no_git_host_is_asked(projects, remote_repo, run):
     projects.integration("pr-merge")
     pushed_feature(projects, "feature work")
     assert run("--all").listing == ["🔀 ❔    a  feature  ✔"]
 
 
-def test_a_branch_with_nothing_for_the_trunk_gets_no_pull_request(projects, host, capsys):
+def test_a_branch_with_nothing_for_the_trunk_gets_no_pull_request(projects, remote_repo, capsys):
     projects.integration("pr-merge")
     pushed_feature(projects)
     assert progress(capsys) == []
 
 
-def test_with_local_integration_no_pull_request_is_opened(projects, host, capsys):
+def test_with_local_integration_no_pull_request_is_opened(projects, remote_repo, capsys):
     a = pushed_feature(projects, "feature work")
     progress(capsys)
-    assert host.opened == []
+    assert remote_repo.opened == []
     assert git(a, "rev-parse", "--abbrev-ref", "HEAD") == "feature"

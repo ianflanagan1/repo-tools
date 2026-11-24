@@ -32,7 +32,7 @@ def width(text: str) -> int:
 def slot_widths(directories: list[Directory]) -> dict[Slot, int]:
     """How wide each slot's column is: its widest badges among directories, and at least a
     badge's width but for the package slot, which is left out when no directory has one."""
-    widths = {slot: 0 if slot is Slot.PACKAGE else width(BLANK) for slot in Slot}
+    widths = {slot: 0 if slot is Slot.DEPENDENCY else width(BLANK) for slot in Slot}
     for directory in directories:
         for slot, icons in directory.badges.items():
             widths[slot] = max(widths[slot], width(icons))

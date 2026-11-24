@@ -48,9 +48,12 @@ class Uncommitted(Plugin):
             log(False, f"Not committing: {operation} is in progress")
             return False
         branch = git(repo, "symbolic-ref", "--quiet", "--short", "HEAD", check=False)
+        start = git(repo, "rev-parse", "--quiet", "--verify", "HEAD", check=False)
         place = directory.place
         by_pull_request = place and place.integration and place.integration.by_pull_request
-        if by_pull_request and branch and branch == place.trunk:
+        # A new repository's first commit goes on the trunk: there's nothing to open a pull
+        # request against until it's there.
+        if by_pull_request and start and branch and branch == place.trunk:
             log(False, f"Not committing on {branch}: work goes on a branch, for a pull request")
             return False
         skill = Path(SKILLS).expanduser() / COMMIT_SKILL
@@ -58,7 +61,6 @@ class Uncommitted(Plugin):
             log(False, f"Not committing: no commit skill in {skill}")
             return False
 
-        start = git(repo, "rev-parse", "--quiet", "--verify", "HEAD", check=False)
         ended = self.agent.run(
             f"/{COMMIT_SKILL}",
             repo,

@@ -1,4 +1,4 @@
-"""Bitbucket Cloud's REST API (2.0), for the bitbucket commands and the Bitbucket forge.
+"""Bitbucket Cloud's REST API (2.0), for the bitbucket commands and the Bitbucket git host API.
 
 It signs in with your Atlassian email and a scoped API token, by basic auth: Bitbucket no
 longer takes app passwords. Git itself goes over SSH, with your own key, so the token never

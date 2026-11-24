@@ -17,15 +17,19 @@ from repo_settings import Missing, Source, Text, Unlocatable
 from repo_list import agents
 from repo_list.config import Invalid, Version, integration_in, skip_fix_in
 from repo_list.git import batch_env, git
+from repo_list.git_hosts import LocalOnly, Origin, origin_git_host_in
 from repo_list.integration import Integration, Worktree, integration_icon
 from repo_list.plugin import Badge, Note, Plugin, Problem, Slot
 
 WORKERS = 8
 FETCH_TIMEOUT_SECONDS = 60
-PURPOSE = "repo-tools"
-SETTINGS = repo_settings.location(PURPOSE)
+SETTINGS = ".config/ianf-repo-tools.toml"
 """Where a repository keeps repo-tools' settings, which its team shares."""
 NO_INTEGRATION = f"Set `integration` in {SETTINGS}"
+LOCAL_ONLY_BY_PULL_REQUEST = (
+    f'{SETTINGS}: remotes.origin.git-host = "none" needs integration = "direct",'
+    " as there are no pull requests without a remote"
+)
 
 
 @dataclass(frozen=True)
@@ -82,6 +86,9 @@ class Place:
     """Whether a Claude Code session other than the one running this is busy here."""
     skip_fix: bool
     """Whether its .config/ianf-repo-tools.toml asks repo-fix to leave it alone."""
+    origin: Origin | None
+    """Where its .config/ianf-repo-tools.toml puts origin: on a git host, or on this computer
+    only; None when it names nothing."""
 
 
 @dataclass
@@ -152,6 +159,15 @@ class Directory:
         ]
 
 
+def named_by(path: Path) -> tuple[Path, list[Directory]]:
+    """The directories a path names, and the root their paths are shown from: a repository alone,
+    from its parent, or else every directory found under it, from the path itself."""
+    directory = classify(path)
+    if directory and directory.is_repo:
+        return path.parent, [directory]
+    return path, find(path)
+
+
 def find(directory: Path) -> list[Directory]:
     """The repositories below directory, and the directories of files in no repository, in name
     order.
@@ -217,12 +233,17 @@ def locate(directory: Directory) -> None:
     own = settings(Source.LOCAL_THIS_WORKTREE, path)
     integration = own if isinstance(own, Invalid) else own.integration
     skip_fix = own if isinstance(own, Invalid) else own.skip_fix
+    origin = own if isinstance(own, Invalid) else own.origin
     if isinstance(integration, Invalid):
         directory.config_error, integration = integration.message, None
     elif integration is None:
         directory.config_error = NO_INTEGRATION
     elif isinstance(skip_fix, Invalid):
         directory.config_error = skip_fix.message
+    elif isinstance(origin, Invalid):
+        directory.config_error = origin.message
+    elif isinstance(origin, LocalOnly) and integration.by_pull_request:
+        directory.config_error = LOCAL_ONLY_BY_PULL_REQUEST
     is_main = git_dir == common
     directory.place = Place(
         common_dir=common,
@@ -234,6 +255,7 @@ def locate(directory: Directory) -> None:
         worktrees=tuple(worktrees),
         claude_working=agents.working(agents.sessions(git_dir), agents.own_session()),
         skip_fix=skip_fix is True,
+        origin=None if isinstance(origin, Invalid) else origin,
     )
 
 
@@ -245,17 +267,19 @@ class Settings:
     integration: Integration | Invalid | None
     """None when it sets none."""
     skip_fix: bool | Invalid
+    origin: Origin | Invalid | None
+    """None when it names nothing."""
 
 
 def settings(source: Source, directory: Path) -> Settings | Invalid:
     """What the source's copy of .config/ianf-repo-tools.toml sets, nothing when there's no such
     file, or what's wrong with the file."""
-    found = repo_settings.fetch(source, directory, PURPOSE)
+    found = repo_settings.fetch(source, directory, SETTINGS)
     match found:
         case Text():
             pass
         case Missing():
-            return Settings(integration=None, skip_fix=False)
+            return Settings(integration=None, skip_fix=False, origin=None)
         case Unlocatable():
             return Invalid(" ".join((found.message, *found.details)))
         case _:
@@ -268,6 +292,7 @@ def settings(source: Source, directory: Path) -> Settings | Invalid:
             return Settings(
                 integration=integration_in(read.table, f"{SETTINGS}: integration"),
                 skip_fix=skip_fix_in(read.table, f"{SETTINGS}: skip-fix"),
+                origin=origin_git_host_in(read.table, f"{SETTINGS}: remotes"),
             )
         case _:
             assert_never(read.version)

@@ -4,7 +4,8 @@
     "python@3.13",
     "uv@latest",
     "gh@latest",
-    "go-task@3.53.1"
+    "go-task@3.53.1",
+    "github:ianflanagan1/coupled-tags-lint/v0.1.0#coupled-tags-lint"
   ],
   "env": {
     "UV_PYTHON_DOWNLOADS": "never"

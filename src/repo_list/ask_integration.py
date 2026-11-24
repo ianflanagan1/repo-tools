@@ -58,21 +58,23 @@ def ask_unset(directories: Sequence[scan.Directory], root: Path, plugins: list[P
         )
         if integration is None:
             continue
-        directory.config_error = _set(directory.path, integration)
+        directory.config_error = write_setting(
+            directory.path, Assignment((), "integration", integration.value)
+        )
         if directory.config_error is None:
             scan.locate(directory)
             scan.check_all(directory, plugins)
 
 
-def _set(path: Path, integration: Integration) -> str | None:
-    """Sets integration in the settings of the worktree path is in: None once it's set, or what's
-    wrong with the file, which is left for a person to fix."""
+def write_setting(path: Path, assignment: Assignment) -> str | None:
+    """Makes assignment in the settings of the worktree path is in: None once it's made, or
+    what's wrong with the file, which is left for a person to fix."""
     written = repo_settings.write(
         Target.THIS_WORKTREE,
         path,
-        scan.PURPOSE,
+        scan.SETTINGS,
         NewFile(Version.V1, SCHEMA),
-        [Assignment((), "integration", integration.value)],
+        [assignment],
     )
     for result in written:
         match result:

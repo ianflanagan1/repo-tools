@@ -32,7 +32,7 @@ from cli_kit.proc import output, run, succeeds
 
 from repo_tools import clone, description
 from repo_tools.bitbucket import api
-from repo_tools.bitbucket.forge import Bitbucket
+from repo_tools.bitbucket.git_host_api import Bitbucket
 
 CI_START_ATTEMPTS = 20
 CI_START_INTERVAL = 3  # seconds
@@ -87,14 +87,14 @@ def publish(
     if not branch:
         raise Precondition(f"HEAD is detached in {directory}.")
 
-    forge = Bitbucket()
-    workspace, _, slug = forge.full_name(name or directory.name).rpartition("/")
+    git_host = Bitbucket()
+    workspace, _, slug = git_host.full_name(name or directory.name).rpartition("/")
     repo = f"{workspace}/{slug.lower()}"
     url = api.web_url(repo)
     origin = clone.origin_url(directory)
     if origin is not None and api.repo_from_url(origin).lower() != repo:
         raise Precondition(f"origin is {origin}, not {repo}.")
-    client = forge.client
+    client = git_host.client
 
     # 1. Repo
     visibility = "private" if private else "public"

@@ -1,13 +1,14 @@
-"""What every code host gives for measuring delivery: its deployments, merged pull requests and
+"""What every git host gives for measuring delivery: its deployments, merged pull requests and
 the commits between two revisions, and the files committed to it, in the same shape whichever
-host it is.
+git host it is; and the URL git reaches a repo at there.
 
-Each host has an adapter, a subclass of Forge, in its own package: repo_tools.github.forge and
-repo_tools.bitbucket.forge. Forge is an abstract class rather than a Protocol so that an adapter
-missing a method fails as soon as it's made, without a type checker; tests/repo_tools/
-test_forge_contract.py holds every adapter to the same behaviour.
+Each git host has an adapter, a subclass of GitHostApi, in its own package:
+repo_tools.github.git_host_api and repo_tools.bitbucket.git_host_api. GitHostApi is an abstract
+class rather than a Protocol so that an adapter missing a method fails as soon as it's made,
+without a type checker; tests/repo_tools/test_git_host_api_contract.py holds every adapter to the
+same behaviour.
 
-Every time is timezone-aware, in UTC. A repo is named owner/name on every host: on GitHub the
+Every time is timezone-aware, in UTC. A repo is named owner/name on every git host: on GitHub the
 owner is a user or organisation, on Bitbucket a workspace.
 """
 
@@ -18,7 +19,7 @@ from enum import StrEnum
 
 
 class Status(StrEnum):
-    """How a deployment went, mapped from each host's own states."""
+    """How a deployment went, mapped from each git host's own states."""
 
     SUCCEEDED = "succeeded"
     FAILED = "failed"
@@ -50,7 +51,7 @@ class PullRequest:
     opened_at: datetime
     merged_at: datetime
     merge_commit: str | None
-    """The commit it landed as on base, or None where the host doesn't say."""
+    """The commit it landed as on base, or None where the git host doesn't say."""
     url: str
 
 
@@ -67,12 +68,13 @@ class Commit:
     the merge was made, not when any change in it was written, so lead time leaves merges out."""
 
 
-class Forge(ABC):
-    """A code host, read for its delivery data. Each method raises Precondition when the repo
-    isn't there or the login can't see it, and Failure when the host can't be reached."""
+class GitHostApi(ABC):
+    """A git host, read for its delivery data. Each method that reads the repo raises
+    Precondition when it isn't there or the login can't see it, and Failure when the git host can't
+    be reached."""
 
     name: str
-    """The host's name as the user knows it, such as "GitHub"."""
+    """The git host's name as the user knows it, such as "GitHub"."""
 
     @abstractmethod
     def full_name(self, repo: str) -> str:
@@ -80,8 +82,13 @@ class Forge(ABC):
         the logged-in user on GitHub, the configured workspace on Bitbucket."""
 
     @abstractmethod
+    def url(self, repo: str) -> str:
+        """The SSH URL git reaches repo, given as owner/name, at: the one publish adds as origin.
+        It's made from the name alone, so the repo needn't exist, and the git host isn't asked."""
+
+    @abstractmethod
     def main_branch(self, repo: str) -> str:
-        """The repo's main branch, as the host calls the default one."""
+        """The repo's main branch, as the git host calls the default one."""
 
     @abstractmethod
     def file(self, repo: str, revision: str, path: str) -> str | None:

@@ -84,3 +84,20 @@ def test_a_repositorys_worktrees_are_fetched_once_between_them(projects, plugin,
     scan.survey(directories, [], fetch_first=True)
     assert fetched == [a]
     assert [f.fetched for f in directories] == [True, True]
+
+
+def test_a_repository_named_is_taken_alone_from_its_parent(tmp_path: Path):
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    (repo / "src").mkdir()
+    (repo / "src" / "code").write_text("x\n")
+    root, directories = scan.named_by(repo)
+    assert (root, [d.path for d in directories]) == (tmp_path, [repo])
+
+
+def test_a_directory_named_is_searched_even_when_it_holds_files(tmp_path: Path):
+    group = tmp_path / "group"
+    (group / "repo" / ".git").mkdir(parents=True)
+    (group / "stray").write_text("x\n")
+    root, directories = scan.named_by(group)
+    assert (root, [d.path for d in directories]) == (group, [group / "repo"])

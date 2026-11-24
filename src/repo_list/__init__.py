@@ -1,6 +1,7 @@
-"""Report the state of every git repository under a directory.
+"""Report the state of one git repository, or of every one under a directory.
 
-Lists each repository under the root that needs attention by its path from the root, with ✘
+path is a repository, or a directory to search, its root. Lists each repository that needs
+attention by its path from the root, or for a repository given, its parent, with ✘
 and then what needs attention; with --all, those with everything committed and pushed too,
 with ✔ in its place:
 
@@ -13,6 +14,7 @@ with ✔ in its place:
   👻 commits on detached HEAD     📡 fetch failed (with --fetch)
   🐘 Packagist (with --packagist) 💥 git failed
   🔴 npm (with --npm)             🔧 no integration, or a wrong one
+  🧭 origin isn't on the git host .config/ianf-repo-tools.toml puts it on
   🔖 commits since the latest version, and 🔗 a lock file behind on a package of yours (with a
      package flag)
 
@@ -20,11 +22,12 @@ Between the path and the mark is the branch checked out, or @ and the commit for
 HEAD; the trunk is dimmed. 🤖 marks a directory a Claude Code session is busy in, and 💤 one
 whose .config/ianf-repo-tools.toml sets skip-fix = true; repo-fix leaves both alone.
 Before the path are four icons: the integration, 🏠 direct, 📏 pr-rebase,
-🔀 pr-merge or 🔧 unset; the host, 🐙 GitHub, 🦊 GitLab, 🧺 Bitbucket, 🗻 Codeberg, 🔷 Azure
-DevOps, ❔ another or 🔌 no remote; with --fetch, 🌐 public or 🔒 private; and each kind of
-package it is, 🐘 Composer, 🔴 npm, 🐍 Python, 🧩 Claude Code plugin or 📋 Copier template,
-blank for none; a Python project is a package once another directory pins it from git. Every
-worktree shows its own.
+🔀 pr-merge or 🔧 unset; the git host, 🐙 GitHub, 🦊 GitLab, 🧺 Bitbucket, 🗻 Codeberg, 🔷 Azure
+DevOps, ❔ another, 🔌 no remote, or 💻 none, kept on this computer by git-host = "none" in
+[remotes.origin]; with --fetch, 🌐 public or 🔒 private; and each kind of dependency it is,
+🐘 Composer, 🔴 npm, 🐍 Python, 🐹 Go module, 📋 Copier template or ⛄ Nix flake, blank for none;
+a Python project or Go module is one once another directory pins it. Every worktree shows its
+own.
 Each directory reports on its own HEAD, and the main worktree also on every branch no worktree
 has checked out, as the integration says. Each repository sets its own, in its
 .config/ianf-repo-tools.toml; there's no default. One that sets none is asked for one on the
@@ -35,7 +38,7 @@ A directory that holds files but is in no repository is listed as not a git repo
 lacking a version tag or branch commit that is on origin, or the check failed. A Composer
 project, an app, isn't a package. With --npm, each package of your npm scope's that isn't private
 is checked the same way, for version tags. With --python, each Python package another
-repository here pins. --packages does all of these. For each, on the trunk with direct
+repository here pins. --dependencies does all of these. For each, on the trunk with direct
 integration: a package never released, or with commits since its latest version tag that change
 more than lock files, for Composer and npm; and a lock file holding a package of yours from
 another repository here at less than its highest version tag, or for Python than its trunk.
@@ -51,7 +54,7 @@ from pathlib import Path
 from cli_kit import cli, devbox, outcome
 
 from repo_list import ask_integration, ecosystems, plugins, report, scan
-from repo_tools import packages
+from repo_tools import dependencies
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -59,7 +62,11 @@ def main(argv: list[str] | None = None) -> int:
         prog="repo-list",
         description=__doc__,
     )
-    parser.add_argument("root", nargs="?", help="default: root in config.toml, or ~/projects")
+    parser.add_argument(
+        "path",
+        nargs="?",
+        help="a repository, or a directory to search (default: root in config.toml, or ~/projects)",
+    )
     parser.add_argument(
         "-f",
         "--fetch",
@@ -69,7 +76,7 @@ def main(argv: list[str] | None = None) -> int:
     ecosystems.add_flags(
         parser,
         lambda e: f"check {ecosystems.packages_of(e)} is released, published and upgraded",
-        "check every kind of package, as each flag above does",
+        "check every kind of dependency, as each flag above does",
     )
     parser.add_argument(
         "-a",
@@ -81,20 +88,30 @@ def main(argv: list[str] | None = None) -> int:
     devbox.use_tools()
     chosen = ecosystems.chosen(args)
     settings = ecosystems.settings_for(parser, chosen)
-    args.root = args.root or settings.root
-    root = Path(args.root).expanduser().resolve()
-    if not root.is_dir():
-        parser.error(f"not a directory: {args.root}")
+    args.path = args.path or settings.root
+    path = Path(args.path).expanduser().resolve()
+    if not path.is_dir():
+        parser.error(f"not a directory: {args.path}")
 
-    directories = scan.find(root)
+    root, directories = scan.named_by(path)
     if not directories:
         print(f"No repositories under {root}")
         return 0
     # repo-list only checks, so nothing it wires is ever announced.
-    pinned = set().union(*(packages.pinned(d.path) for d in directories))
-    providers = ecosystems.providers((d.path for d in directories), chosen, settings, pinned)
+    pinned = set().union(*(dependencies.pinned(d.path) for d in directories))
+    offering = dependencies.offering(d.path for d in directories)
+    providers = ecosystems.providers(
+        (d.path for d in directories), chosen, settings, pinned, offering
+    )
     active = plugins.built_in(
-        chosen, settings, pinned, providers, outcome.starting, upgrade_locks=False
+        chosen,
+        settings,
+        pinned,
+        offering,
+        providers,
+        outcome.starting,
+        upgrade_locks=False,
+        own_go_modules=[],
     )
     scan.survey(directories, active, fetch_first=args.fetch)
     ask_integration.ask_unset(directories, root, active)

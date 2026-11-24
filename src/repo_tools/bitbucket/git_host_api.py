@@ -1,4 +1,4 @@
-"""Bitbucket Cloud as a Forge, read through its REST API.
+"""Bitbucket Cloud as a GitHostApi, read through its REST API.
 
 Deployments are Bitbucket's deployments, which Pipelines records for each step that names a
 deployment environment. Bitbucket stops listing a deployment once its pipeline's artifacts
@@ -14,7 +14,7 @@ from cli_kit.outcome import Precondition
 
 from repo_list import config
 from repo_tools.bitbucket import api
-from repo_tools.forge import Commit, Deployment, Forge, PullRequest, Status
+from repo_tools.git_host_api import Commit, Deployment, GitHostApi, PullRequest, Status
 
 STATUSES = {
     "SUCCESSFUL": Status.SUCCEEDED,
@@ -23,7 +23,7 @@ STATUSES = {
 }
 
 
-class Bitbucket(Forge):
+class Bitbucket(GitHostApi):
     name = "Bitbucket"
 
     def __init__(self, client: api.Bitbucket | None = None) -> None:
@@ -47,6 +47,9 @@ class Bitbucket(Forge):
                 f"Or set bitbucket.workspace in {config.CONFIG} for repos given by bare name.",
             )
         return f"{workspace}/{repo}"
+
+    def url(self, repo: str) -> str:
+        return api.ssh_url(repo)
 
     def main_branch(self, repo: str) -> str:
         found = self.client.repository(repo)

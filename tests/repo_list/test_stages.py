@@ -16,7 +16,7 @@ def surveyed(*plugins) -> Directory:
 def run(directory: Directory, *plugins) -> list[tuple[bool, str]]:
     """Runs the fixes, returning what they logged."""
     logged: list[tuple[bool, str]] = []
-    fix.fix(directory, list(plugins), lambda ok, line, *details: logged.append((ok, line)))
+    fix.fix(directory, list(plugins), lambda ok, line, *details: logged.append((ok, line)), Path())
     return logged
 
 

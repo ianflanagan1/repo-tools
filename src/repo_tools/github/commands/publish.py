@@ -97,7 +97,7 @@ def publish(
 
     # 2. Remote
     if origin is None:
-        run(*git, "remote", "add", "origin", f"git@github.com:{repo}.git")
+        run(*git, "remote", "add", "origin", api.ssh_url(repo))
         outcome.changed(f"Added origin {repo}")
 
     # 3. Push

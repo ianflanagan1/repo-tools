@@ -26,3 +26,10 @@ tasks:
     cmds:
       - uv run ruff check
       - uv run ruff format --check
+
+  check:
+    desc: Lint, test, then lint the COUPLED tags, failing on any problem
+    cmds:
+      - task: lint
+      - task: test
+      - coupled-tags-lint

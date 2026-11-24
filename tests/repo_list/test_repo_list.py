@@ -2,6 +2,7 @@
 
 import json
 import os
+import shutil
 
 import pytest
 from cli_kit.outcome import Failure
@@ -492,7 +493,7 @@ def test_with_a_package_flag_a_package_never_released_is_reported(projects, pack
 def test_the_packages_flag_without_every_setting_it_needs_is_a_usage_error(projects, run):
     projects.config.write_text('[packagist]\nvendor = "me"\n')
     with pytest.raises(SystemExit) as exit:
-        run("--packages")
+        run("--dependencies")
     assert exit.value.code == 2
 
 
@@ -515,6 +516,24 @@ def test_a_root_given_is_searched_instead(projects, run, monkeypatch):
     projects.pushed_repo("b")
     monkeypatch.chdir("/")
     assert run("--all", projects.root / "group").listing == ["🏠 ❔    a  main  ✔"]
+
+
+def test_a_path_to_a_repository_lists_only_that_repository(projects, run):
+    projects.pushed_repo("a")
+    b = projects.pushed_repo("b")
+    (b / "src").mkdir()
+    (b / "src" / "code").write_text("x\n")
+    projects.commit(b, "code")
+    projects.git("-C", b, "push", "--quiet")
+    assert run("--all", b).listing == ["🏠 ❔    b  main  ✔"]
+
+
+def test_a_root_holding_a_file_beside_its_repositories_is_searched_rather_than_taken_as_one(
+    projects, run
+):
+    projects.pushed_repo("a")
+    (projects.root / "stray").write_text("x\n")
+    assert run("--all").listing == ["🏠 ❔    a  main  ✔"]
 
 
 def test_the_root_in_the_config_is_the_default_instead(projects, run):
@@ -623,3 +642,23 @@ def test_the_exit_status_is_0_when_all_are_clean_and_1_otherwise(projects, run):
     assert run().status == 0
     projects.local_repo("b")
     assert run().status == 1
+
+
+# --- Nix flakes, with the real Nix
+
+
+needs_nix = pytest.mark.skipif(shutil.which("nix") is None, reason="needs Nix")
+
+
+@needs_nix
+def test_a_flake_with_an_output_for_others_is_shown_and_its_dependant_s_lock_reported_behind(
+    projects, run
+):
+    kit, _ = projects.kit_and_app()
+    projects.commit(kit, "ahead")
+    projects.git("-C", kit, "push", "--quiet")
+    behind = projects.origin(kit).with_suffix("")
+    assert run("--all", "--nix").listing == [
+        f"🏠 ❔       app  main  ✘ 🔗 flake.lock behind on {behind}",
+        "🏠 ❔    ⛄ kit  main  ✔",
+    ]

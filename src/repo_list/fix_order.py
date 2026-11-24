@@ -1,14 +1,14 @@
 """The order repo-fix takes repositories in, so that each one's pinned dependencies among them are
 fixed before it, and pushed by the time it is, ready for its lock file to be updated.
 
-Only pinned dependencies count, as repo_tools.packages says: one read from a path is seen as it
+Only pinned dependencies count, as repo_tools.dependencies says: one read from a path is seen as it
 is on disk, so fixing it first changes nothing for its dependant.
 """
 
 from collections.abc import Collection, Hashable, Mapping, Sequence, Set
 from dataclasses import dataclass
 
-from repo_tools.packages import Name
+from repo_tools.dependencies import Name
 
 
 @dataclass(frozen=True)

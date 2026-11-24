@@ -1,4 +1,4 @@
-"""Version tags, [v]MAJOR.MINOR.PATCH, as every host's release command makes them.
+"""Version tags, [v]MAJOR.MINOR.PATCH, as every git host's release command makes them.
 
 Pre-releases such as v2.0.0-beta1 aren't versions here.
 """

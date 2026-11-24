@@ -1,18 +1,19 @@
-"""The host a remote is on, such as GitHub: whether the repository is public, and, where work
+"""A remote repository, on its git host such as GitHub: whether it's public, and, where work
 goes by pull request, whether a branch has one open, and opening one as a draft.
 
-Host is the port; GitHub's adapter goes through gh, Bitbucket's through its API. Each turns the
-host's failures into values, so a host that can't be reached is reported, not raised.
+RemoteRepo is the port; GitHub's adapter goes through gh, Bitbucket's through its API. Each
+turns the git host's failures into values, so a git host that can't be reached is reported, not
+raised.
 """
 
-import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Protocol, final
+from typing import Protocol, assert_never, final
 
 from cli_kit.outcome import Problem as Refused
 
+from repo_list.git_hosts import GitHost, domain_of, git_host_at
 from repo_tools.bitbucket import api as bitbucket
 from repo_tools.github import api as github
 
@@ -32,7 +33,7 @@ class Visibility(StrEnum):
 @final
 @dataclass(frozen=True)
 class Unknown:
-    """The host couldn't say, such as when no token is stored or it lacks a scope."""
+    """The git host couldn't say, such as when no token is stored or it lacks a scope."""
 
     reason: str
 
@@ -41,18 +42,18 @@ class Unknown:
 @dataclass(frozen=True)
 class NotOpened:
     reason: tuple[str, ...]
-    """What the host said, line by line."""
+    """What the git host said, line by line."""
 
 
-class Host(Protocol):
-    host: str
+class RemoteRepo(Protocol):
+    git_host: GitHost
 
     def visibility(self) -> Visibility | Unknown:
-        """Who can see the repository, or why the host couldn't say."""
+        """Who can see the repository, or why the git host couldn't say."""
         ...
 
     def open_for(self, branch: str) -> bool | Unknown:
-        """Whether branch has a pull request open, or why the host couldn't say."""
+        """Whether branch has a pull request open, or why the git host couldn't say."""
         ...
 
     def open_draft(self, branch: str, base: str, title: str, body: str) -> Opened | NotOpened:
@@ -60,8 +61,8 @@ class Host(Protocol):
         ...
 
 
-# The icon of each host a remote URL can name, by its domain, icons from Unicode 11 or earlier.
-HOST_ICONS = {
+# The icon of each git host a remote URL can name, by its domain, icons from Unicode 11 or earlier.
+GIT_HOST_ICONS = {
     "github.com": "🐙",
     "gitlab.com": "🦊",
     "bitbucket.org": "🧺",
@@ -70,31 +71,35 @@ HOST_ICONS = {
     "visualstudio.com": "🔷",
 }
 NO_GH = "gh isn't installed"
-OTHER_HOST = "❔"
-"""Any other host, such as a company's own server, or a path on this machine."""
+OTHER_GIT_HOST = "❔"
+"""Any other git host or server, such as a company's own, or a path on this machine."""
 
 
-def host_icon(url: str) -> str:
-    """The icon of the host a remote URL names, in SSH or HTTPS form."""
-    match = re.match(r"^(?:[a-z+]+://)?(?:[^@/]+@)?([^/:]+)", url)
-    domain = match.group(1).lower() if match else ""
-    for known, icon in HOST_ICONS.items():
+def git_host_icon(url: str) -> str:
+    """The icon of the git host a remote URL names, in SSH or HTTPS form."""
+    domain = domain_of(url)
+    for known, icon in GIT_HOST_ICONS.items():
         if domain == known or domain.endswith("." + known):
             return icon
-    return OTHER_HOST
+    return OTHER_GIT_HOST
 
 
-def for_remote(url: str) -> Host | None:
-    """The host of the repo at remote url, or None for a host there's no adapter for, such as a
+def for_remote(url: str) -> RemoteRepo | None:
+    """The repo at remote url, or None on a git host or server there's no adapter for, such as a
     plain git server."""
+    git_host = git_host_at(url)
     try:
-        if "github.com" in url:
-            return GitHub(github.repo_from_url(url))
-        if "bitbucket.org" in url:
-            return Bitbucket(bitbucket.repo_from_url(url))
+        match git_host:
+            case GitHost.GITHUB:
+                return GitHub(github.repo_from_url(url))
+            case GitHost.BITBUCKET:
+                return Bitbucket(bitbucket.repo_from_url(url))
+            case None:
+                return None
+            case _:
+                assert_never(git_host)
     except Refused:
         return None
-    return None
 
 
 def proposal(branch: str, subjects: Sequence[str]) -> tuple[str, str]:
@@ -106,7 +111,7 @@ def proposal(branch: str, subjects: Sequence[str]) -> tuple[str, str]:
 
 
 class GitHub:
-    host = "GitHub"
+    git_host = GitHost.GITHUB
 
     def __init__(self, repo: str) -> None:
         self.repo = repo
@@ -140,7 +145,7 @@ class GitHub:
 
 
 class Bitbucket:
-    host = "Bitbucket"
+    git_host = GitHost.BITBUCKET
 
     def __init__(self, repo: str) -> None:
         self.repo = repo
@@ -169,5 +174,5 @@ class Bitbucket:
 
 
 def _said(refused: Refused) -> str:
-    """What the host or the credential store said, on one line."""
+    """What the git host or the credential store said, on one line."""
     return " ".join([refused.message, *refused.details])

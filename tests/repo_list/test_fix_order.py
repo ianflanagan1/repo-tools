@@ -1,5 +1,5 @@
-from repo_list.dependencies import Order, edges, fix_first
-from repo_tools.packages import Ecosystem, Name
+from repo_list.fix_order import Order, edges, fix_first
+from repo_tools.dependencies import Ecosystem, Name
 
 
 def python(name: str) -> Name:
