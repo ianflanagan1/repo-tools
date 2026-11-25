@@ -14,7 +14,7 @@ wheels = [
 [[package]]
 name = "cli-kit"
 version = "0.1.0"
-source = { git = "https://github.com/ianflanagan1/cli-kit?branch=main#dcad32d5b218f3b6e2d95e94e5edd86058cdb839" }
+source = { git = "https://github.com/ianflanagan1/cli-kit?branch=main#de0d2dbd3089696678b0c22c884fc33b714331e1" }
 
 [[package]]
 name = "colorama"
@@ -28,7 +28,7 @@ wheels = [
 [[package]]
 name = "git-default-branch"
 version = "0.1.0"
-source = { git = "https://github.com/ianflanagan1/git-default-branch?branch=main#bcb2f8d18727edada7ae93b3ba271a02a270204f" }
+source = { git = "https://github.com/ianflanagan1/git-default-branch?branch=main#31b336ad7d6f60bbe634e4bd3c88dfbabc9ce548" }
 dependencies = [
     { name = "cli-kit" },
 ]
