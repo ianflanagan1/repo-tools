@@ -51,9 +51,9 @@
       "last_modified": "2026-10-05T09:07:57Z",
       "resolved": "github:NixOS/nixpkgs/aa48d347080940b8a2b8d2f48228674e280a3514?lastModified=1791191277&narHash=sha256-i8KuaINOYLvB2oQikGvtRmdZRxATRxsI9Yad2pp7dEA%3D"
     },
-    "github:ianflanagan1/coupled-tags-lint/v0.1.0#coupled-tags-lint": {
-      "last_modified": "2026-11-04T05:12:25Z",
-      "resolved": "github:ianflanagan1/coupled-tags-lint/2d4116ed4830070427c0db0d6ead11965fabfd70?lastModified=1793769145&narHash=sha256-MAbtVQbxv9LknKlauO1oXQfUDQJqG1T7hdEozOO0hhk%3D#coupled-tags-lint"
+    "github:ianflanagan1/coupled/v0.3.0#coupled": {
+      "last_modified": "2026-11-24T23:30:12Z",
+      "resolved": "github:ianflanagan1/coupled/58a0cda51d4225b8850cf393a5c68944be83d3a1?lastModified=1795563012&narHash=sha256-6EnZUOeTiUj8jC7su9YzOHx94f5kcU5Ab20wY0xIIMk%3D#coupled"
     },
     "go-task@3.53.1": {
       "last_modified": "2026-10-28T22:04:29Z",

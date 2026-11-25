@@ -128,7 +128,7 @@ wheels = [
 [[package]]
 name = "repo-settings"
 version = "0.1.0"
-source = { git = "https://github.com/ianflanagan1/repo-settings?branch=main#e56d07631cafc8fbfe0a86b91ef6cd9611a51601" }
+source = { git = "https://github.com/ianflanagan1/repo-settings?branch=main#9841947644918b4b8c89636b853efe179709955a" }
 dependencies = [
     { name = "git-default-branch" },
     { name = "tomlkit" },

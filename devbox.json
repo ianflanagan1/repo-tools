@@ -5,7 +5,7 @@
     "uv@latest",
     "gh@latest",
     "go-task@3.53.1",
-    "github:ianflanagan1/coupled-tags-lint/v0.1.0#coupled-tags-lint"
+    "github:ianflanagan1/coupled/v0.3.0#coupled"
   ],
   "env": {
     "UV_PYTHON_DOWNLOADS": "never"
