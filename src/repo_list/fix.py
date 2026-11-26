@@ -52,8 +52,8 @@ Nothing is forced, except a branch rebased with pr-rebase integration, pushed wi
 branch both behind and unpushed has diverged, and is left alone, but for the trunk with direct
 integration; so are stashes. Any rebase or merge that stops at a conflict is undone, which
 is what becomes of HEAD's catching up when it's expected to conflict. A repository whose commit
-fails is left there, one whose fetch failed is neither pushed nor pulled, and a directory a
-Claude Code session is busy in is left alone, as is one whose .config/ianf-repo-tools.toml sets
+or push fails is left there, one whose fetch failed is neither pushed nor pulled, and a directory
+a Claude Code session is busy in is left alone, as is one whose .config/ianf-repo-tools.toml sets
 skip-fix = true. Ends with repo-list's report of what's left.
 
 Exit status: 0 all clean, 1 something still needs attention, 2 usage error.

@@ -431,6 +431,26 @@ def test_unpushed_commits_are_pushed_to_the_branch_upstream(projects, repo_fix):
     assert subjects(projects.origin(a)) == ["init", "local"]
 
 
+def refusing_pushes(origin: Path) -> None:
+    """Makes the bare repository at origin refuse every push, as a host might."""
+    hook = origin / "hooks" / "pre-receive"
+    hook.write_text("#!/bin/sh\necho 'Refused.' >&2\nexit 1\n")
+    hook.chmod(0o755)
+
+
+def test_a_failed_push_is_reported_and_stops_the_repository_there(projects, fakes, repo_fix):
+    a = upgradable_uv_lock(projects)
+    projects.commit(a, "local")
+    refusing_pushes(projects.origin(a))
+    result = repo_fix()
+    assert result.progress[:2] == ["a", "  ✘ Push of main failed:"]
+    assert "    remote: Refused." in [line.rstrip() for line in result.progress]
+    # The lock files aren't upgraded on top of a trunk that couldn't be pushed.
+    assert all("--dry-run" in command for command in fakes.commands())
+    assert subjects(a)[-1] == "local"
+    assert result.status == 1
+
+
 def test_with_pr_integration_a_branch_without_an_upstream_is_pushed_to_the_only_remote(
     projects, repo_fix
 ):
@@ -1254,6 +1274,16 @@ def test_a_uv_lock_on_the_trunk_that_can_be_upgraded_is_upgraded_installed_commi
     )
     assert git(a, "show", "--name-only", "--format=", "HEAD") == "uv.lock"
     assert (result.summary, result.status) == ("✔ All 1 clean", 0)
+
+
+def test_a_lock_upgrade_whose_push_fails_is_reported_and_kept_to_push_next_time(projects, repo_fix):
+    a = upgradable_uv_lock(projects)
+    refusing_pushes(projects.origin(a))
+    result = repo_fix()
+    assert "  ✘ Push of main failed:" in result.progress
+    assert subjects(a)[-1] == "Upgrade the locked dependencies"
+    assert subjects(a, "origin/main")[-1] == "Lock"
+    assert result.status == 1
 
 
 def test_a_uv_lock_that_cannot_be_upgraded_is_left_alone(projects, fakes, repo_fix):

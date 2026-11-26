@@ -90,15 +90,16 @@ class Sync(Plugin):
             else:
                 catch_up(directory, action, log)
 
-        push_all(directory, integration, log)
-        return True
+        return push_all(directory, integration, log)
 
 
-def push_all(directory: Directory, integration: Integration, log: Log) -> None:
-    """Pushes each branch the integration says to push."""
+def push_all(directory: Directory, integration: Integration, log: Log) -> bool:
+    """Pushes each branch the integration says to push, and says whether every push worked. One
+    that fails doesn't stop the others."""
     facts = gather(directory)
-    for push_ in plan_pushes(facts.branches, integration):
-        push(directory, push_, facts.upstreams.get(push_.branch, ""), log)
+    pushes = plan_pushes(facts.branches, integration)
+    pushed = [push(directory, p, facts.upstreams.get(p.branch, ""), log) for p in pushes]
+    return all(pushed)
 
 
 def gather(directory: Directory) -> Facts:
@@ -211,7 +212,8 @@ def catch_up(directory: Directory, action: CatchUp, log: Log) -> None:
     replay(directory, Rebase(action.base, None) if action.rebase else Merge(action.base), log)
 
 
-def push(directory: Directory, action: Push, upstream: str, log: Log) -> None:
+def push(directory: Directory, action: Push, upstream: str, log: Log) -> bool:
+    """Pushes the branch, and says whether that worked."""
     repo = directory.path
     branch = action.branch
     lease = ["--force-with-lease", "--force-if-includes"] if action.force else []
@@ -225,13 +227,14 @@ def push(directory: Directory, action: Push, upstream: str, log: Log) -> None:
         if len(remotes) != 1:
             choices = f"{len(remotes)} remotes to choose from"
             log(False, f"Not pushing {branch}: it has no upstream, and {choices}")
-            return
+            return False
         result = run(repo, "push", "--quiet", "--set-upstream", remotes[0], branch)
         done = f"Pushed {branch} to {remotes[0]}, now its upstream"
     if result.returncode == 0:
         log(True, done)
-    else:
-        log(False, f"Push of {branch} failed", *result.stderr.strip().splitlines())
+        return True
+    log(False, f"Push of {branch} failed", *result.stderr.strip().splitlines())
+    return False
 
 
 @final

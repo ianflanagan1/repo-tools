@@ -3,7 +3,9 @@
 On the trunk with direct integration, each lock file whose tool would change it, upgrading every
 package as far as the manifest's constraints allow, is upgraded, and what it then holds is
 installed. A project with a `check` task has it run next: if that fails, the lock files go back as
-they were, and so does what's installed. Otherwise they're committed together and pushed.
+they were, and so does what's installed. Otherwise they're committed together and pushed. A push
+that fails leaves the commit, to push next time, and stops the repository there, so nothing is
+released on top of it.
 
 Only the trunk is upgraded: an upgrade on each branch would conflict when they land, and where work
 goes by pull request nothing is committed on the trunk. The upgrade comes after the branch is level
@@ -125,7 +127,8 @@ class Lock(Plugin):
                 return False
             if not self._upgrade(directory.path, upgradable, log):
                 return False
-            sync.push_all(directory, place.integration, log)
+            if not sync.push_all(directory, place.integration, log):
+                return False
         return all(_install(directory.path, e, log) for e in behind if e not in upgradable)
 
     def _upgradable(self, repo: Path, ecosystem: Ecosystem) -> list[Problem]:
