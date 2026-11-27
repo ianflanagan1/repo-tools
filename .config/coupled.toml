@@ -1,0 +1,3 @@
+#:schema https://raw.githubusercontent.com/ianflanagan1/coupled/main/schema/coupled.v1.json
+version = 1
+registry-file = ".config/coupled-registry.toml"
