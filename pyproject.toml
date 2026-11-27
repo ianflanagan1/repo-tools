@@ -22,6 +22,7 @@ git-default-branch = { git = "https://github.com/ianflanagan1/git-default-branch
 dev = [
     "jsonschema>=4",
     "pytest>=8",
+    "pytest-xdist>=3.8.0",
     "ruff>=0.6",
 ]
 

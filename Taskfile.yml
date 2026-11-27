@@ -17,9 +17,9 @@ tasks:
       - echo "✔ Created config.toml from config.example.toml. Edit it for your settings; git ignores it."
 
   test:
-    desc: Run the tests
+    desc: Run the tests, in parallel across the CPU's cores
     cmds:
-      - uv run pytest --quiet
+      - uv run pytest --quiet --numprocesses auto
 
   lint:
     desc: Lint, and check formatting
