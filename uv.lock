@@ -14,7 +14,7 @@ wheels = [
 [[package]]
 name = "cli-kit"
 version = "0.1.0"
-source = { git = "https://github.com/ianflanagan1/cli-kit?branch=main#de0d2dbd3089696678b0c22c884fc33b714331e1" }
+source = { git = "https://github.com/ianflanagan1/cli-kit?branch=main#809903d8b85c323d85e27695dfce0a0b90a9c5ed" }
 
 [[package]]
 name = "colorama"
@@ -37,7 +37,7 @@ wheels = [
 [[package]]
 name = "git-default-branch"
 version = "0.1.0"
-source = { git = "https://github.com/ianflanagan1/git-default-branch?branch=main#31b336ad7d6f60bbe634e4bd3c88dfbabc9ce548" }
+source = { git = "https://github.com/ianflanagan1/git-default-branch?branch=main#7a7a10f1e362522c8e5797ddbbf9910289fd01bb" }
 dependencies = [
     { name = "cli-kit" },
 ]
@@ -150,7 +150,7 @@ wheels = [
 [[package]]
 name = "repo-settings"
 version = "0.1.0"
-source = { git = "https://github.com/ianflanagan1/repo-settings?branch=main#9841947644918b4b8c89636b853efe179709955a" }
+source = { git = "https://github.com/ianflanagan1/repo-settings?branch=main#70a3e6b5e36be096170d59e665bb9f5c92700501" }
 dependencies = [
     { name = "git-default-branch" },
     { name = "tomlkit" },
