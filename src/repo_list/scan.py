@@ -293,8 +293,8 @@ def settings(source: Source, directory: Path) -> Settings | Invalid:
         case Text():
             pass
         case Missing():
-        case Unlocatable():
             return Settings(integration=None, skip_fix=False, origin=None, visibility=None)
+        case Unlocatable():
             return Invalid(" ".join((found.message, *found.details)))
         case _:
             assert_never(found)
