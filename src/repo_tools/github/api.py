@@ -64,6 +64,19 @@ def edit(repo: str, description: str | None, add_topics: tuple[str, ...]) -> Non
     output(*command)
 
 
+def set_visibility(repo: str, visibility: str) -> None:
+    """Makes the repo public or private, accepting what GitHub warns that costs, such as stars."""
+    output(
+        "gh",
+        "repo",
+        "edit",
+        repo,
+        "--visibility",
+        visibility,
+        "--accept-visibility-change-consequences",
+    )
+
+
 def create(repo: str, visibility: str, description: str) -> None:
     run("gh", "repo", "create", repo, f"--{visibility}", "--description", description)
 

@@ -52,6 +52,10 @@ Prints a repo's visibility, description and topics as one JSON object, then a st
 
 Sets a repo's description and adds topics, repeating `--add-topic` for each. `repo` is `owner/name`, or a name owned by you. Only what differs is sent, and nothing is done when the repo already matches. It deliberately can't change anything else, such as visibility or the name, so it can be allowed where `gh repo edit` is denied.
 
+### `github visibility <repo> public|private`
+
+Makes a repo public or private. `repo` is `owner/name`, or a name owned by you. Skipped when it already has that visibility. Making a repo private drops its stars and watchers, and leaves any public forks public. It's kept apart from `github edit` so that `edit` can be allowed where this isn't.
+
 ### `github archive <repo>`
 
 Archives a repo, making it read-only. `repo` is `owner/name`, or a name owned by you. Skipped when it's already archived. It uses `gh`'s everyday login, since archiving needs no extra scope and you can undo it in the repo's settings.

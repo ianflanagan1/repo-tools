@@ -5,7 +5,16 @@ import sys
 from cli_kit import cli
 
 from repo_tools import git_host_commands
-from repo_tools.github.commands import archive, delete, edit, publish, release, rename, view
+from repo_tools.github.commands import (
+    archive,
+    delete,
+    edit,
+    publish,
+    release,
+    rename,
+    view,
+    visibility,
+)
 from repo_tools.github.git_host_api import GitHub
 
 COMMANDS = [
@@ -14,6 +23,7 @@ COMMANDS = [
     rename,
     view,
     edit,
+    visibility,
     archive,
     delete,
     *git_host_commands.commands(GitHub),
