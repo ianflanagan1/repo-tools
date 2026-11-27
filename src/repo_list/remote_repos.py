@@ -8,12 +8,11 @@ raised.
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from enum import StrEnum
 from typing import Protocol, assert_never, final
 
 from cli_kit.outcome import Problem as Refused
 
-from repo_list.git_hosts import GitHost, domain_of, git_host_at
+from repo_list.git_hosts import GitHost, Visibility, domain_of, git_host_at
 from repo_tools.bitbucket import api as bitbucket
 from repo_tools.github import api as github
 
@@ -22,12 +21,6 @@ from repo_tools.github import api as github
 @dataclass(frozen=True)
 class Opened:
     url: str
-
-
-class Visibility(StrEnum):
-    PUBLIC = "public"
-    PRIVATE = "private"
-    """Private, or GitHub's internal: either way not for everyone to see."""
 
 
 @final

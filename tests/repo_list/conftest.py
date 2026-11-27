@@ -7,8 +7,9 @@ Bare remotes go in `projects.remotes`, outside the searched directory. The proje
 until `projects.private_emails` names some. Git commits as test@example.com. Each repository
 made sets its integration, direct, in a committed .config/ianf-repo-tools.toml;
 `projects.integration` sets another, or none, for the repositories made after it. A repository
-made with no remote also puts origin on GitHub there, as [remotes.origin] git-host;
-`projects.git_host` sets another, or none. A pushed one names no git host, as its origin is a
+made with no remote also puts origin on GitHub there, as [remotes.origin] git-host, public, as its
+visibility; `projects.git_host` sets another, or none, and `projects.visibility` another
+visibility, or none. A pushed one names no git host, as its origin is a
 path. Packagist and npm are faked: see `packagist` and `npm`. So is the terminal a choice is made
 on: with no answers given to `terminal`, there's none, as when an agent runs the command.
 Plugins can be faked too: see `plugin`.
@@ -50,6 +51,7 @@ class Projects:
         self.config.write_text(CONFIG)
         self.next_integration: str | None = "direct"
         self.next_git_host: str | None = "github"
+        self.next_visibility: str | None = "public"
         self.root.mkdir()
         self.remotes.mkdir()
 
@@ -62,6 +64,11 @@ class Projects:
         """Sets the git host of origin of the repositories made after this with no remote, or with
         None leaves it unset."""
         self.next_git_host = git_host
+
+    def visibility(self, visibility: str | None) -> None:
+        """Sets who can see origin of the repositories made after this with no remote on a git
+        host, or with None leaves it unset."""
+        self.next_visibility = visibility
 
     def worktree(self, repo: Path, name: str, *args: str) -> Path:
         """A linked worktree of repo under the root, added with args, such as --detach or
@@ -97,6 +104,8 @@ class Projects:
         git("init", "--quiet", repo)
         lines = [f'integration = "{self.next_integration}"'] if self.next_integration else []
         lines += [f'\n[remotes.origin]\ngit-host = "{git_host}"'] if git_host else []
+        hosted = git_host not in (None, "none") and self.next_visibility
+        lines += [f'visibility = "{self.next_visibility}"'] if hosted else []
         if lines:
             (repo / ".config").mkdir()
             settings = "version = 1\n" + "\n".join(lines) + "\n"

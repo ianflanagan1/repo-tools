@@ -1,11 +1,13 @@
 """Behaviour of the icons repo-list shows after each path: the integration, and who can see
 the remote repository."""
 
+from pathlib import Path
+
 import pytest
 
 from repo_list import remote_repos
-from repo_list.git_hosts import GitHost
-from repo_list.remote_repos import Unknown, Visibility
+from repo_list.git_hosts import GitHost, Visibility
+from repo_list.remote_repos import Unknown
 
 
 class FakeRemoteRepo:
@@ -166,3 +168,34 @@ def test_a_python_project_other_repositories_read_from_a_path_is_no_dependency(p
     projects.python_project("kit", KIT)
     projects.python_project("tools", uses_kit('{ path = "../kit", editable = true }'))
     assert run("--all").listing == ["🏠 ❔    kit    main  ✔", "🏠 ❔    tools  main  ✔"]
+
+
+def settings_making_origin(projects, repo: Path, visibility: str) -> None:
+    """Commits and pushes settings that make origin visibility, and gives origin a GitHub URL,
+    which git config sends to its bare repository."""
+    (repo / ".config" / "ianf-repo-tools.toml").write_text(
+        f'version = 1\nintegration = "direct"\n\n[remotes.origin]\ngit-host = "github"\n'
+        f'visibility = "{visibility}"\n'
+    )
+    projects.git("-C", repo, "commit", "--quiet", "--all", "--message", "Settings")
+    projects.git("-C", repo, "push", "--quiet")
+    url = "git@github.com:me/a.git"
+    projects.git("-C", repo, "config", f"url.{projects.origin(repo)}.insteadOf", url)
+    projects.git("-C", repo, "remote", "set-url", "origin", url)
+
+
+def test_origin_seen_by_who_its_settings_say_is_clean(projects, run, remote_repo):
+    a = projects.pushed_repo("a")
+    settings_making_origin(projects, a, "private")
+    remote_repo(Visibility.PRIVATE)
+    assert run("--fetch", "--all").listing == ["🏠 🐙 🔒 a  main  ✔"]
+
+
+def test_origin_seen_by_others_than_its_settings_say_is_reported(projects, run, remote_repo):
+    a = projects.pushed_repo("a")
+    settings_making_origin(projects, a, "private")
+    remote_repo(Visibility.PUBLIC)
+    assert run("--fetch").listing == [
+        "🏠 🐙 🌐 a  main  ✘ 🧭 origin is public, though .config/ianf-repo-tools.toml makes it"
+        " private"
+    ]

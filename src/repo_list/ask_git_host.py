@@ -1,12 +1,15 @@
 """Asking at the terminal, before repo-fix publishes, for the git host of each repository that has
 no remote and whose .config/ianf-repo-tools.toml puts origin on none, and setting the one chosen
-in its own copy, as [remotes.origin] git-host.
+in its own copy, as [remotes.origin] git-host; then, once it has a git host, who can see it, as
+[remotes.origin] visibility, if its copy doesn't say. Visibility is asked even of a repository
+whose git host was set before, so none is published public without being asked.
 
 A git host is only asked for when there's no remote to tell it by: once origin exists, it says where
 the repository is, and repo-list reports a git host set that differs from it. A repository with
 direct integration can also be kept on this computer only, setting git-host none, after which it
 isn't asked again; one integrated by pull request needs a remote. A repository left unset, by
-skipping or with no terminal to ask at, isn't published, and is asked again next time.
+skipping or with no terminal to ask at, isn't published, and is asked again next time; so is one
+whose visibility is left unset.
 """
 
 from collections.abc import Sequence
@@ -20,7 +23,7 @@ from repo_settings import Assignment
 from repo_list import git_hosts, report, scan
 from repo_list.ask_integration import write_setting
 from repo_list.git import git
-from repo_list.git_hosts import LOCAL_ONLY, ORIGIN, GitHost, LocalOnly, Origin
+from repo_list.git_hosts import LOCAL_ONLY, ORIGIN, GitHost, LocalOnly, Origin, Visibility
 from repo_list.integration import Integration
 from repo_list.plugin import Plugin
 from repo_list.plugins import remote
@@ -31,6 +34,10 @@ KEEP_LOCAL = (
     f"{LOCAL_ONLY:<10} {remote.LOCAL_ONLY} keep it on this computer only, and never ask again"
 )
 SKIP = "skip          leave it unpublished, and ask again next time"
+
+
+def visibility_question(git_host: GitHost) -> str:
+    return f"Who should see {ORIGIN} on {git_hosts.title(git_host)}?"
 
 
 def _choices(integration: Integration | None) -> list[tuple[str, Origin | None]]:
@@ -48,44 +55,82 @@ def _choices(integration: Integration | None) -> list[tuple[str, Origin | None]]
     return [*git_host_choices, *local, (SKIP, None)]
 
 
-def _prompt(path: Path) -> str:
+def _visibility_choices() -> list[tuple[str, Visibility | None]]:
+    """Who can see the repository, each option and the visibility it sets; then skip."""
+    return [
+        (f"{Visibility.PUBLIC:<10} {remote.icon(Visibility.PUBLIC)} anyone", Visibility.PUBLIC),
+        (
+            f"{Visibility.PRIVATE:<10} {remote.icon(Visibility.PRIVATE)} only those given access",
+            Visibility.PRIVATE,
+        ),
+        (SKIP, None),
+    ]
+
+
+def _prompt(path: Path, question: str) -> str:
     """The question for the directory at path from the root: the path coloured as repo-list lists
     it, and the question in yellow."""
     colour = terminal.style()
-    return f"{report.name(path, colour)}: {colour(YELLOW, QUESTION)}"
+    return f"{report.name(path, colour)}: {colour(YELLOW, question)}"
 
 
-def _unset(directory: scan.Directory) -> bool:
-    """Whether repo-fix would publish the directory, but its settings name no git host to do it on:
-    a repository it would fix, with settings it can read, and no remote."""
+def _unpublished(directory: scan.Directory) -> scan.Place | None:
+    """The directory's place, when repo-fix would publish it: a repository it would fix, with
+    settings it can read, no remote, and not kept local; otherwise None."""
     place = directory.place
-    return (
-        place is not None
-        and not directory.config_error
-        and not place.skip_fix
-        and not place.claude_working
-        and place.origin is None
-        and not git(directory.path, "remote")
+    if (
+        place is None
+        or directory.config_error
+        or place.skip_fix
+        or place.claude_working
+        or isinstance(place.origin, LocalOnly)
+        or git(directory.path, "remote")
+    ):
+        return None
+    return place
+
+
+def _choose[T](
+    directory: scan.Directory, root: Path, question: str, choices: list[tuple[str, T | None]]
+) -> T | None:
+    """What's chosen for the directory, or None when it's skipped or there's no terminal."""
+    prompt = _prompt(directory.path.relative_to(root), question)
+    index = terminal.choose(prompt, [option for option, _ in choices])
+    return None if index is None else choices[index][1]
+
+
+def _set(directory: scan.Directory, setting: str, value: str) -> bool:
+    """Sets the [remotes.origin] setting in the directory's settings, and reads them again. Says
+    whether it worked; when not, what's wrong is its config error."""
+    directory.config_error = write_setting(
+        directory.path, Assignment(("remotes", ORIGIN), setting, value)
     )
+    if directory.config_error is not None:
+        return False
+    scan.locate(directory)
+    return directory.config_error is None
 
 
 def ask_unset(directories: Sequence[scan.Directory], root: Path, plugins: list[Plugin]) -> None:
-    """Asks for the git host of each directory with no remote that names none, in turn, and checks
-    each one set again, so it's published there, or kept local."""
+    """Asks, in turn, for the git host of each directory with no remote that names none, then
+    who can see each one on a git host that doesn't say, and checks each one set again, so it's
+    published there, or kept local."""
     for directory in directories:
-        if not _unset(directory) or directory.place is None:
+        place = _unpublished(directory)
+        if place is None:
             continue
-        choices = _choices(directory.place.integration)
-        prompt = _prompt(directory.path.relative_to(root))
-        index = terminal.choose(prompt, [option for option, _ in choices])
-        origin = None if index is None else choices[index][1]
-        if origin is None:
-            continue
-        directory.config_error = write_setting(
-            directory.path, Assignment(("remotes", ORIGIN), "git-host", _value(origin))
-        )
-        if directory.config_error is None:
-            scan.locate(directory)
+        changed = False
+        if place.origin is None:
+            origin = _choose(directory, root, QUESTION, _choices(place.integration))
+            if origin is None or not _set(directory, "git-host", _value(origin)):
+                continue
+            changed, place = True, directory.place
+        if place is not None and isinstance(place.origin, GitHost) and place.visibility is None:
+            question = visibility_question(place.origin)
+            visibility = _choose(directory, root, question, _visibility_choices())
+            if visibility is not None and _set(directory, "visibility", visibility.value):
+                changed = True
+        if changed:
             scan.check_all(directory, plugins)
 
 

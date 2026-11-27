@@ -4,7 +4,8 @@ origin, and telling which one a remote's URL is on.
 A repository's .config/ianf-repo-tools.toml names its origin's git host in a table keyed by the
 remote's name, [remotes.origin], so that a mirror could later be named beside it without a new
 version of the file. Only origin can be named for now. Its git-host can also be none, which keeps
-the repository on this computer only: never published, nor asked where to publish it.
+the repository on this computer only: never published, nor asked where to publish it. Its
+visibility says who repo-fix publishes it for, public or private, which none can't have.
 """
 
 import re
@@ -20,6 +21,12 @@ ORIGIN = "origin"
 class GitHost(StrEnum):
     GITHUB = "github"
     BITBUCKET = "bitbucket"
+
+
+class Visibility(StrEnum):
+    PUBLIC = "public"
+    PRIVATE = "private"
+    """Private, or GitHub's internal: either way not for everyone to see."""
 
 
 LOCAL_ONLY = "none"
@@ -93,13 +100,35 @@ def origin_git_host_in(table: dict, where: str) -> Origin | Invalid | None:
         return None
     if not isinstance(origin, dict):
         return Invalid(f"{where}.{ORIGIN} must be a table")
-    unknown = sorted(origin.keys() - {"git-host"})
+    unknown = sorted(origin.keys() - {"git-host", "visibility"})
     if unknown:
         return Invalid(f"{where}.{ORIGIN} has an unknown setting {', '.join(unknown)}")
     git_host = origin.get("git-host")
     if git_host == LOCAL_ONLY:
+        if "visibility" in origin:
+            return Invalid(
+                f'{where}.{ORIGIN}.visibility can\'t be set with git-host = "{LOCAL_ONLY}",'
+                " as it's never published"
+            )
         return LocalOnly()
     if git_host not in set(GitHost):
         allowed = ", ".join([*GitHost, LOCAL_ONLY])
         return Invalid(f"{where}.{ORIGIN}.git-host must be one of {allowed}")
     return GitHost(git_host)
+
+
+def origin_visibility_in(table: dict, where: str) -> Visibility | Invalid | None:
+    """Who the settings table publishes origin for, None when it doesn't say, or what's wrong with
+    it. The rest of its remotes are origin_git_host_in's to check.
+
+    where says where the remotes are, as for origin_git_host_in.
+    """
+    remotes = table.get("remotes")
+    origin = remotes.get(ORIGIN) if isinstance(remotes, dict) else None
+    visibility = origin.get("visibility") if isinstance(origin, dict) else None
+    if visibility is None:
+        return None
+    if visibility not in set(Visibility):
+        allowed = ", ".join(Visibility)
+        return Invalid(f"{where}.{ORIGIN}.visibility must be one of {allowed}")
+    return Visibility(visibility)

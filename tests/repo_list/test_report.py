@@ -1,8 +1,8 @@
 """Behaviour of measuring what repo-list prints, so its columns line up in a terminal."""
 
+from repo_list.git_hosts import Visibility
 from repo_list.integration import Integration
 from repo_list.plugins.remote import LOCAL_ONLY, NO_REMOTE, icon
-from repo_list.remote_repos import Visibility
 from repo_list.report import width
 
 

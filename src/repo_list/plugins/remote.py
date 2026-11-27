@@ -1,8 +1,8 @@
 """Badges for a repository's remote: its git host, such as 🐙 GitHub, or 🔌 none, or 💻 none
 because its settings keep it on this computer only; and who can see it, 🌐 public or 🔒 private.
 Every worktree shows them, though they share the remote. And 🧭 when origin isn't where the
-worktree's .config/ianf-repo-tools.toml puts it, which only a person can tell the right one of, so
-repo-fix leaves it.
+worktree's .config/ianf-repo-tools.toml puts it, or isn't seen by who its visibility says, which
+only a person can tell the right one of, so repo-fix leaves it.
 
 The git host is told by the remote's URL. Who can see it is asked of the git host, so only when
 the remotes were fetched in this run: repo-list with --fetch, and repo-fix. A git host or server
@@ -18,9 +18,9 @@ from git_default_branch import remote_to_ask
 
 from repo_list import git_hosts
 from repo_list.git import git
-from repo_list.git_hosts import ORIGIN, GitHost, LocalOnly, Origin, git_host_at
+from repo_list.git_hosts import ORIGIN, GitHost, LocalOnly, Origin, Visibility, git_host_at
 from repo_list.plugin import Badge, Plugin, Problem, Slot
-from repo_list.remote_repos import RemoteRepo, Unknown, Visibility, git_host_icon
+from repo_list.remote_repos import RemoteRepo, Unknown, git_host_icon
 from repo_list.scan import SETTINGS, Directory
 
 NO_REMOTE = "🔌"
@@ -74,6 +74,18 @@ class RemoteOfLocalOnly:
         return f"🧭 has a remote, though {SETTINGS} keeps it local"
 
 
+@final
+@dataclass(frozen=True)
+class SeenOtherwise:
+    """Origin's git host says it's seen by others than the settings' visibility says."""
+
+    expected: Visibility
+    actual: Visibility
+
+    def describe(self) -> str:
+        return f"🧭 {ORIGIN} is {self.actual}, though {SETTINGS} makes it {self.expected}"
+
+
 type Mismatch = NoOrigin | OriginElsewhere | RemoteOfLocalOnly
 
 
@@ -124,6 +136,12 @@ class Remote(Plugin):
             case Unknown():
                 return found
             case Visibility() as visibility:
-                return [*found, Badge(Slot.VISIBILITY, icon(visibility))]
+                expected = place.visibility if remote == ORIGIN else None
+                seen = (
+                    [SeenOtherwise(expected, visibility)]
+                    if expected is not None and expected is not visibility
+                    else []
+                )
+                return [*seen, *found, Badge(Slot.VISIBILITY, icon(visibility))]
             case _ as answer:
                 assert_never(answer)

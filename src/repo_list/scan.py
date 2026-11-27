@@ -17,7 +17,13 @@ from repo_settings import Missing, Source, Text, Unlocatable
 from repo_list import agents
 from repo_list.config import Invalid, Version, integration_in, skip_fix_in
 from repo_list.git import batch_env, git
-from repo_list.git_hosts import LocalOnly, Origin, origin_git_host_in
+from repo_list.git_hosts import (
+    LocalOnly,
+    Origin,
+    Visibility,
+    origin_git_host_in,
+    origin_visibility_in,
+)
 from repo_list.integration import Integration, Worktree, integration_icon
 from repo_list.plugin import Badge, Note, Plugin, Problem, Slot
 
@@ -89,6 +95,8 @@ class Place:
     origin: Origin | None
     """Where its .config/ianf-repo-tools.toml puts origin: on a git host, or on this computer
     only; None when it names nothing."""
+    visibility: Visibility | None
+    """Who its .config/ianf-repo-tools.toml publishes origin for; None when it doesn't say."""
 
 
 @dataclass
@@ -234,6 +242,7 @@ def locate(directory: Directory) -> None:
     integration = own if isinstance(own, Invalid) else own.integration
     skip_fix = own if isinstance(own, Invalid) else own.skip_fix
     origin = own if isinstance(own, Invalid) else own.origin
+    visibility = own if isinstance(own, Invalid) else own.visibility
     if isinstance(integration, Invalid):
         directory.config_error, integration = integration.message, None
     elif integration is None:
@@ -242,6 +251,8 @@ def locate(directory: Directory) -> None:
         directory.config_error = skip_fix.message
     elif isinstance(origin, Invalid):
         directory.config_error = origin.message
+    elif isinstance(visibility, Invalid):
+        directory.config_error = visibility.message
     elif isinstance(origin, LocalOnly) and integration.by_pull_request:
         directory.config_error = LOCAL_ONLY_BY_PULL_REQUEST
     is_main = git_dir == common
@@ -256,6 +267,7 @@ def locate(directory: Directory) -> None:
         claude_working=agents.working(agents.sessions(git_dir), agents.own_session()),
         skip_fix=skip_fix is True,
         origin=None if isinstance(origin, Invalid) else origin,
+        visibility=None if isinstance(visibility, Invalid) else visibility,
     )
 
 
@@ -269,6 +281,8 @@ class Settings:
     skip_fix: bool | Invalid
     origin: Origin | Invalid | None
     """None when it names nothing."""
+    visibility: Visibility | Invalid | None
+    """None when it doesn't say."""
 
 
 def settings(source: Source, directory: Path) -> Settings | Invalid:
@@ -279,8 +293,8 @@ def settings(source: Source, directory: Path) -> Settings | Invalid:
         case Text():
             pass
         case Missing():
-            return Settings(integration=None, skip_fix=False, origin=None)
         case Unlocatable():
+            return Settings(integration=None, skip_fix=False, origin=None, visibility=None)
             return Invalid(" ".join((found.message, *found.details)))
         case _:
             assert_never(found)
@@ -293,6 +307,7 @@ def settings(source: Source, directory: Path) -> Settings | Invalid:
                 integration=integration_in(read.table, f"{SETTINGS}: integration"),
                 skip_fix=skip_fix_in(read.table, f"{SETTINGS}: skip-fix"),
                 origin=origin_git_host_in(read.table, f"{SETTINGS}: remotes"),
+                visibility=origin_visibility_in(read.table, f"{SETTINGS}: remotes"),
             )
         case _:
             assert_never(read.version)

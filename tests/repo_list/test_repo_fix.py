@@ -1001,13 +1001,88 @@ def test_the_git_host_chosen_is_set_for_origin_and_published_on(
 ):
     projects.git_host(None)
     a = projects.local_repo("a")
-    terminal.answer("bitbucket")
+    terminal.answer("bitbucket", "public")
     result = repo_fix()
     assert (a / SETTINGS).read_text() == (
         'version = 1\nintegration = "direct"\n\n[remotes.origin]\ngit-host = "bitbucket"\n'
+        'visibility = "public"\n'
     )
     assert [call[1:] for call in fakes.calls("bitbucket")] == [["publish", str(a)]]
     assert result.summary == "✔ All 1 clean"
+
+
+def test_once_the_git_host_is_chosen_who_can_see_it_there_is_asked(
+    projects, fakes, repo_fix, terminal
+):
+    projects.git_host(None)
+    projects.local_repo("work/a")
+    repo_fix()
+    assert terminal.prompts == ["work/a: Which git host should origin be published on?"]
+    terminal.answer("github")
+    repo_fix()
+    assert terminal.prompts[1:] == [
+        "work/a: Which git host should origin be published on?",
+        "work/a: Who should see origin on GitHub?",
+    ]
+    assert terminal.options == [
+        "public     🌐 anyone",
+        "private    🔒 only those given access",
+        "skip          leave it unpublished, and ask again next time",
+    ]
+
+
+def test_a_repository_chosen_to_be_private_is_published_private(
+    projects, fakes, repo_fix, terminal
+):
+    projects.git_host(None)
+    a = projects.local_repo("a")
+    terminal.answer("github", "private")
+    result = repo_fix()
+    assert (a / SETTINGS).read_text() == (
+        'version = 1\nintegration = "direct"\n\n[remotes.origin]\ngit-host = "github"\n'
+        'visibility = "private"\n'
+    )
+    assert [call[1:] for call in fakes.calls("github")] == [["publish", str(a), "--private"]]
+    assert result.summary == "✔ All 1 clean"
+
+
+def test_a_repository_set_private_is_published_private_without_asking(
+    projects, fakes, repo_fix, terminal
+):
+    projects.visibility("private")
+    a = projects.local_repo("a")
+    repo_fix()
+    assert terminal.prompts == []
+    assert [call[1:] for call in fakes.calls("github")] == [["publish", str(a), "--private"]]
+
+
+def test_a_repository_with_a_git_host_but_no_visibility_is_asked_only_who_can_see_it(
+    projects, fakes, repo_fix, terminal
+):
+    projects.visibility(None)
+    a = projects.local_repo("a")
+    terminal.answer("public")
+    repo_fix()
+    assert terminal.prompts == ["a: Who should see origin on GitHub?"]
+    assert [call[1:] for call in fakes.calls("github")] == [["publish", str(a)]]
+
+
+def test_with_no_visibility_chosen_the_repository_is_left_unpublished_and_asked_again(
+    projects, fakes, repo_fix, terminal
+):
+    projects.visibility(None)
+    a = projects.local_repo("a")
+    terminal.answer("skip")
+    result = repo_fix()
+    assert result.progress == [
+        "a",
+        "  ✘ Not published: choose who can see it when asked, or set it in"
+        " .config/ianf-repo-tools.toml",
+    ]
+    assert fakes.calls("github") == []
+    repo_fix()
+    assert len(terminal.prompts) == 2
+    assert "visibility" not in (a / SETTINGS).read_text()
 
 
 def test_with_no_git_host_chosen_the_repository_is_left_unpublished_and_asked_again(
@@ -1893,7 +1968,7 @@ def test_the_init_flag_makes_a_directory_of_files_a_published_repository(
     notes = projects.root / "notes"
     notes.mkdir()
     (notes / "todo").write_text("x\n")
-    terminal.answer("direct", "github")
+    terminal.answer("direct", "github", "public")
     result = repo_fix("--init")
     assert result.progress[:2] == ["notes", "  ✔ Initialised a git repository"]
     assert subjects(fakes.remote) == ["Fake commit"]
@@ -1914,20 +1989,21 @@ def test_with_no_terminal_a_directory_made_a_repository_is_committed_but_not_pub
     ]
 
 
-def test_the_integration_and_git_host_of_a_directory_made_a_repository_are_asked_before_its_commit(
+def test_the_integration_git_host_and_visibility_of_a_new_repository_are_asked_before_its_commit(
     projects, fakes, repo_fix, terminal
 ):
     notes = projects.root / "notes"
     notes.mkdir()
     (notes / "todo").write_text("x\n")
-    terminal.answer("direct", "github")
+    terminal.answer("direct", "github", "private")
     result = repo_fix("--init")
     assert terminal.prompts == [
         "notes: How and where does work reach the trunk?",
         "notes: Which git host should origin be published on?",
+        "notes: Who should see origin on GitHub?",
     ]
     committed = git(fakes.remote, "show", "HEAD:.config/ianf-repo-tools.toml")
-    assert 'git-host = "github"' in committed
+    assert 'git-host = "github"\nvisibility = "private"' in committed
     assert result.summary == "✔ All 1 clean"
 
 
@@ -1937,7 +2013,7 @@ def test_with_pr_integration_a_new_repository_s_first_commit_is_made_on_the_trun
     notes = projects.root / "notes"
     notes.mkdir()
     (notes / "todo").write_text("x\n")
-    terminal.answer("pr-rebase", "github")
+    terminal.answer("pr-rebase", "github", "public")
     result = repo_fix("--init")
     assert subjects(fakes.remote) == ["Fake commit"]
     assert result.summary == "✔ All 1 clean"

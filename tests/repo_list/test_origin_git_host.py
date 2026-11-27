@@ -97,3 +97,21 @@ def test_a_local_only_repository_with_pr_integration_is_a_settings_problem(proje
         '📏 💻    a  main  ✘ 🔧 .config/ianf-repo-tools.toml: remotes.origin.git-host = "none"'
         ' needs integration = "direct", as there are no pull requests without a remote'
     ]
+
+
+def test_a_visibility_that_cant_be_used_is_a_settings_problem(projects, run):
+    a = projects.pushed_repo("a")
+    put_origin_on(projects, a, '[remotes.origin]\ngit-host = "github"\nvisibility = "secret"\n')
+    assert run().listing == [
+        "🏠 ❔    a  main  ✘ 🔧 .config/ianf-repo-tools.toml: remotes.origin.visibility must be"
+        " one of public, private"
+    ]
+
+
+def test_a_visibility_for_a_local_only_repository_is_a_settings_problem(projects, run):
+    a = projects.pushed_repo("a")
+    put_origin_on(projects, a, '[remotes.origin]\ngit-host = "none"\nvisibility = "private"\n')
+    assert run().listing == [
+        "🏠 ❔    a  main  ✘ 🔧 .config/ianf-repo-tools.toml: remotes.origin.visibility can't be"
+        ' set with git-host = "none", as it\'s never published'
+    ]

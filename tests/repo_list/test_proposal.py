@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 
 from repo_list import fix, remote_repos
-from repo_list.git_hosts import GitHost
-from repo_list.remote_repos import NotOpened, Opened, Unknown, Visibility, proposal
+from repo_list.git_hosts import GitHost, Visibility
+from repo_list.remote_repos import NotOpened, Opened, Unknown, proposal
 
 
 class FakeRemoteRepo:

@@ -1,6 +1,7 @@
 """🔌 A repository with no remote, published on the git host its .config/ianf-repo-tools.toml puts
-origin on, with `github publish` or `bitbucket publish`. A repository that names none is asked
-for one before it's fixed (see repo_list.ask_git_host); one left unset isn't published. One whose
+origin on, with `github publish` or `bitbucket publish`, public or private as its visibility says.
+A repository that names no git host, or no visibility, is asked for it before it's fixed (see
+repo_list.ask_git_host); one left unset isn't published. One whose
 settings keep it on this computer only, with git-host none, has no remote on purpose, which isn't a
 problem."""
 
@@ -12,7 +13,7 @@ from typing import assert_never
 
 from repo_list import git_hosts
 from repo_list.git import git
-from repo_list.git_hosts import GitHost, LocalOnly
+from repo_list.git_hosts import GitHost, LocalOnly, Visibility
 from repo_list.plugin import Log, Plugin, Problem, Stage
 from repo_list.scan import SETTINGS, Directory
 
@@ -51,12 +52,17 @@ class Publish(Plugin):
 
     def fix(self, directory: Directory, problems: list[Problem], log: Log) -> bool:
         """Publishes the repository on its origin's git host. Says whether it worked."""
-        git_host = directory.place.origin if directory.place else None
+        place = directory.place
+        git_host = place.origin if place else None
         if not isinstance(git_host, GitHost):
             log(False, f"Not published: choose a git host when asked, or set one in {SETTINGS}")
             return False
+        visibility = place.visibility if place else None
+        if visibility is None:
+            log(False, f"Not published: choose who can see it when asked, or set it in {SETTINGS}")
+            return False
         name = Path(command(git_host)).name
-        run = [command(git_host), "publish", str(directory.path)]
+        run = [command(git_host), "publish", str(directory.path), *_flags(visibility)]
         if not self.wait_for_ci:
             run.append("--no-ci-wait")
         log.begin(
@@ -71,3 +77,14 @@ class Publish(Plugin):
         details = [line for line in result.stdout.splitlines() if not line.startswith("✅")]
         log(True, "Published", *details)
         return True
+
+
+def _flags(visibility: Visibility) -> list[str]:
+    """What tells `publish` who can see the repository it makes."""
+    match visibility:
+        case Visibility.PUBLIC:
+            return []
+        case Visibility.PRIVATE:
+            return ["--private"]
+        case _:
+            assert_never(visibility)

@@ -4,7 +4,8 @@ path is a repository, or a directory to search as repo-list does (default: root 
 or ~/projects).
 Every repository is fetched first, once for all of its worktrees, and one that sets no
 integration is asked for one, as repo-list asks; one with no remote whose settings name no git host
-for origin is asked for that. Then each is fixed, a
+for origin is asked for that, and then, with a git host, who can see it, if they don't say. Then
+each is fixed, a
 repository's worktrees one after another, the one that updates its trunk first, so the others
 catch up with the trunk as it now is. Repositories go in name order, but each that another pins
 as a dependency, such as from git in its uv.lock or from Packagist in its composer.lock, goes
@@ -19,8 +20,9 @@ failed. In each:
                          for a new repository's first commit
   🔌 no remote           published on the git host [remotes.origin] names in
                          .config/ianf-repo-tools.toml, with `github publish` or
-                         `bitbucket publish`, public; asked for when it names none;
-                         never with git-host none, which keeps it on this computer
+                         `bitbucket publish`, public or private as its visibility
+                         says; each asked for when it names none; never with
+                         git-host none, which keeps it on this computer
   📥 behind              fast-forwarded to the upstream; with direct integration, a trunk checked
                          out here with commits of its own has them rebased onto it
   🔄 behind its base     rebased onto it, or with pr-merge integration the base merged in
@@ -38,8 +40,8 @@ failed. In each:
                          version tag that change more than lock files, or a package never
                          released, are released as the next patch version with `github release`
                          or `bitbucket release`
-  📁 not a repository    with --init only: initialised, asked for its integration and git host, then
-                         committed and published
+  📁 not a repository    with --init only: initialised, asked for its integration, git host and
+                         visibility, then committed and published
   🐘 Packagist           with --packagist only, for a package of your vendor's, once released:
                          `packagist publish`, then `packagist update`, which waits until
                          Packagist has what was pushed
