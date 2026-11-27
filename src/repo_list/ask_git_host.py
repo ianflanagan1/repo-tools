@@ -4,12 +4,17 @@ in its own copy, as [remotes.origin] git-host; then, once it has a git host, who
 [remotes.origin] visibility, if its copy doesn't say. Visibility is asked even of a repository
 whose git host was set before, so none is published public without being asked.
 
-A git host is only asked for when there's no remote to tell it by: once origin exists, it says where
-the repository is, and repo-list reports a git host set that differs from it. A repository with
-direct integration can also be kept on this computer only, setting git-host none, after which it
-isn't asked again; one integrated by pull request needs a remote. A repository left unset, by
-skipping or with no terminal to ask at, isn't published, and is asked again next time; so is one
-whose visibility is left unset.
+A git host is only asked for when there's no remote to tell it by. A repository with direct
+integration can also be kept on this computer only, setting git-host none, after which it isn't
+asked again; one integrated by pull request needs a remote. A repository left unset, by skipping
+or with no terminal to ask at, isn't published, and is asked again next time; so is one whose
+visibility is left unset.
+
+A repository already published on a git host must say so in its settings too, which repo-list
+reports when they don't. Who can see it is asked, offering first who the git host says can see it
+now, so a repository public by mistake isn't kept so unseen, and with the answer its git host is
+set, from origin's URL, without asking; skipping leaves both unset. Only the worktree on the trunk
+is asked and set, as the setting is the repository's, which the others catch up with.
 """
 
 from collections.abc import Sequence
@@ -34,6 +39,7 @@ KEEP_LOCAL = (
     f"{LOCAL_ONLY:<10} {remote.LOCAL_ONLY} keep it on this computer only, and never ask again"
 )
 SKIP = "skip          leave it unpublished, and ask again next time"
+UNSAID_SKIP = "skip          leave it unset, and ask again next time"
 
 
 def visibility_question(git_host: GitHost) -> str:
@@ -55,14 +61,22 @@ def _choices(integration: Integration | None) -> list[tuple[str, Origin | None]]
     return [*git_host_choices, *local, (SKIP, None)]
 
 
-def _visibility_choices() -> list[tuple[str, Visibility | None]]:
-    """Who can see the repository, each option and the visibility it sets; then skip."""
-    return [
+def _visibility_choices(
+    git_host: GitHost, seen: Visibility | None
+) -> list[tuple[str, Visibility | None]]:
+    """Who can see the repository, each option and the visibility it sets, the one the git host
+    has now first, when it said; then skip."""
+    now = f" (as {git_hosts.title(git_host)} has it now)"
+    choices = [
         (f"{Visibility.PUBLIC:<10} {remote.icon(Visibility.PUBLIC)} anyone", Visibility.PUBLIC),
         (
             f"{Visibility.PRIVATE:<10} {remote.icon(Visibility.PRIVATE)} only those given access",
             Visibility.PRIVATE,
         ),
+    ]
+    ordered = sorted(choices, key=lambda choice: choice[1] is not seen)
+    return [
+        *((option + (now if v is seen else ""), v) for option, v in ordered),
         (SKIP, None),
     ]
 
@@ -127,11 +141,58 @@ def ask_unset(directories: Sequence[scan.Directory], root: Path, plugins: list[P
             changed, place = True, directory.place
         if place is not None and isinstance(place.origin, GitHost) and place.visibility is None:
             question = visibility_question(place.origin)
-            visibility = _choose(directory, root, question, _visibility_choices())
+            choices = _visibility_choices(place.origin, None)
+            visibility = _choose(directory, root, question, choices)
             if visibility is not None and _set(directory, "visibility", visibility.value):
                 changed = True
         if changed:
             scan.check_all(directory, plugins)
+
+
+def ask_published(directories: Sequence[scan.Directory], root: Path, plugins: list[Plugin]) -> None:
+    """Sets what's missing of origin's settings in each worktree on its trunk whose origin is on
+    a git host its settings don't say all of: who can see it, asked in turn unless they say, and
+    with it the git host, from origin's URL; then checks each one set again. One skipped, or with
+    no terminal to ask at, is left as it was."""
+    for directory in directories:
+        unsaid = _unsaid(directory)
+        place = directory.place
+        if unsaid is None or place is None:
+            continue
+        visibility = place.visibility
+        if visibility is None:
+            question = visibility_question(unsaid.git_host)
+            choices = [
+                *_visibility_choices(unsaid.git_host, unsaid.seen)[:-1],
+                (UNSAID_SKIP, None),
+            ]
+            visibility = _choose(directory, root, question, choices)
+        if visibility is None:
+            continue
+        written = "git-host" not in unsaid.unset or _set(
+            directory, "git-host", unsaid.git_host.value
+        )
+        if written and "visibility" in unsaid.unset:
+            written = _set(directory, "visibility", visibility.value)
+        if written:
+            scan.check_all(directory, plugins)
+
+
+def _unsaid(directory: scan.Directory) -> remote.OriginUnsaid | None:
+    """What the directory's settings don't say of origin on its git host, when repo-fix would set
+    it: in a worktree on the trunk it would fix, with settings it can read."""
+    place = directory.place
+    if (
+        place is None
+        or directory.config_error
+        or place.skip_fix
+        or place.claude_working
+        or place.head is None
+        or place.head != place.trunk
+    ):
+        return None
+    found = directory.found.get(remote.Remote.name, [])
+    return next((p for p in found if isinstance(p, remote.OriginUnsaid)), None)
 
 
 def _value(origin: Origin) -> str:

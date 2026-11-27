@@ -3,16 +3,17 @@
 path is a repository, or a directory to search as repo-list does (default: root in config.toml,
 or ~/projects).
 Every repository is fetched first, once for all of its worktrees, and one that sets no
-integration is asked for one, as repo-list asks; one with no remote whose settings name no git host
-for origin is asked for that, and then, with a git host, who can see it, if they don't say. Then
-each is fixed, a
-repository's worktrees one after another, the one that updates its trunk first, so the others
-catch up with the trunk as it now is. Repositories go in name order, but each that another pins
-as a dependency, such as from git in its uv.lock or from Packagist in its composer.lock, goes
-before it, and its own pinned dependencies before that; one read from a path doesn't count. So a
-dependant's lock file can upgrade to what its dependencies just pushed. Repositories that depend on
-each other are said to, and go in name order. A dependant is fixed even when its dependency's fix
-failed. In each:
+integration is asked for one, as repo-list asks; one with no remote whose settings name no git
+host for origin is asked for that, and then, with a git host, who can see it, if they don't say;
+one whose origin is on GitHub or Bitbucket is asked, on its trunk, who can see it, if its
+settings don't say, offering first who the git host says can see it now, and the git host is set
+with it. Then each is fixed, a repository's worktrees one after another, the one that updates its
+trunk first, so the others catch up with the trunk as it now is. Repositories go in name order,
+but each that another pins as a dependency, such as from git in its uv.lock or from Packagist in
+its composer.lock, goes before it, and its own pinned dependencies before that; one read from a
+path doesn't count. So a dependant's lock file can upgrade to what its dependencies just pushed.
+Repositories that depend on each other are said to, and go in name order. A dependant is fixed
+even when its dependency's fix failed. In each:
 
   📝 uncommitted files   committed by Claude Code's /ianf-commit skill, then checked: the work tree
                          must be clean, on the same branch or detached HEAD, with earlier
@@ -137,6 +138,7 @@ def main(argv: list[str] | None = None) -> int:
     scan.survey(directories, active, fetch_first=True)
     ask_integration.ask_unset(directories, root, active)
     ask_git_host.ask_unset(directories, root, active)
+    ask_git_host.ask_published(directories, root, active)
     fixed_any = False
     changed: set[Path] = set()
     fixed_names: set[dependencies.Name] = set()

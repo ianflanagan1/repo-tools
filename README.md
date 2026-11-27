@@ -175,10 +175,11 @@ Each repository needing attention is listed by its path from the root, in name o
 - 👻 **commits on detached HEAD**: commits reachable from no branch or remote
 - 📦 **stashes**
 - 🔌 **no remote**: unless `.config/ianf-repo-tools.toml` keeps the repository on this computer only (see [Where origin is published](#where-origin-is-published))
-- 🧭 **origin is on *another git host or server***, or **no origin remote**: the worktree's `.config/ianf-repo-tools.toml` puts origin on a git host it isn't on, or **has a remote**, though it keeps the repository local, or with `--fetch`, **origin is *public***, though it makes it private, or the other way round (see [Where origin is published](#where-origin-is-published)); only you can tell which is right, so repo-fix leaves it
+- 🧭 **origin is on *another git host or server***, or **no origin remote**: the worktree's `.config/ianf-repo-tools.toml` puts origin on a git host it isn't on, or **has a remote**, though it keeps the repository local, or with `--fetch`, **origin is *public***, though it makes it private, or the other way round, or ***git host* couldn't say who can see origin**, so the settings went unchecked (see [Where origin is published](#where-origin-is-published)); only you can tell which is right, so repo-fix leaves it
 - 📁 **not a git repository**: a directory that holds files but is in no repository, such as a project not yet initialised
 - 📡 **fetch failed**: with `--fetch` only
 - 💥 **git failed**: git couldn't read the repository
+- 🔧 **.config/ianf-repo-tools.toml doesn't set remotes.origin.git-host or remotes.origin.visibility**: origin is on GitHub or Bitbucket, whose repositories must say both; repo-fix asks (see [Where origin is published](#where-origin-is-published))
 - 🔧 **Set `integration` in .config/ianf-repo-tools.toml**, or what's wrong with the integration set: shown alone, as nothing else can be judged without it, and repo-fix leaves the repository alone, unless you choose an integration when asked (see [Worktrees and integration](#worktrees-and-integration))
 - 🐘 **not on Packagist**, **Packagist lacks *versions or branches***, or **Packagist check failed**: with `--packagist` only, for a package of your vendor's (see [Packagist](#packagist))
 - 🔴 **not on npm**, **npm lacks *versions***, or **npm check failed**: with `--npm` only, for a package of your scope's (see [npm](#npm))
@@ -198,7 +199,7 @@ Before the path, four icons say what kind of repository it is, explained here ra
 | | | 🔌 | no remote | | | | |
 | | | 💻 | no remote, kept on this computer only | | | | |
 
-The git host is told from the remote's URL. Who can see the remote is asked of GitHub or Bitbucket, so it's shown only with `--fetch`, and left blank for another git host or server, or one that can't say. Every worktree shows them, linked ones too. Every icon is from Unicode 11 or earlier, the widths VS Code's terminal knows, so the columns line up there.
+The git host is told from the remote's URL. Who can see origin is what its `visibility` says, on every run. Without one, or for a remote other than origin, it's asked of GitHub or Bitbucket, so it's shown only with `--fetch`, and left blank for another git host or server, or one that can't say. Every worktree shows them, linked ones too. Every icon is from Unicode 11 or earlier, the widths VS Code's terminal knows, so the columns line up there.
 
 The dependency icon is read from the manifests in the repository's working tree, by each ecosystem's own marker, so an app stays blank by saying so in its manifest, as it already does to stop an accidental publish:
 
@@ -262,7 +263,9 @@ With PR integration a detached HEAD isn't caught up or pushed: it needs a branch
 
 `[remotes.origin] visibility` says who can see origin once it's published: `public`, anyone, or `private`, only those given access, which repo-fix publishes with `--private`. Once a worktree with no remote has a git host, chosen just now or set before, repo-fix asks who can see it, if its copy doesn't say, and sets the answer there. As with the git host, skip or no terminal leaves it unpublished and asks again next time, so nothing is published public without being asked. `none` can't have a visibility, and is reported as 🔧 with one.
 
-Once origin exists, its URL says where it is, so the settings matter only until then, and a repository published before they existed needs none. When they're set, repo-list checks origin against them, and reports 🧭 when origin is on another git host or server, there are remotes but no origin, a repository set to `none` has a remote, or, with `--fetch`, its git host says it's public where it's set private or the other way round.
+Once origin is on GitHub or Bitbucket, the settings must still say both, as repo-list shows who can see it from them without asking the git host, and reports 🔧 when either is missing. repo-fix fills them in, in the worktree on the trunk: it asks who can see origin, offering first who the git host says can see it now, so a repository public by mistake isn't kept so without being asked, and sets that and the git host, from origin's URL. Skipping, or no terminal, leaves both unset, and asks again next time. The settings changed are committed and pushed as other work is. Origin on another git host or server needs neither.
+
+repo-list checks origin against the settings, and reports 🧭 when origin is on another git host or server, there are remotes but no origin, a repository set to `none` has a remote, or, with `--fetch`, and so on every repo-fix, its git host says it's public where it's set private or the other way round, or can't say who can see it, such as when `gh` isn't logged in, so the check never lapses unseen.
 
 Remotes are keyed by name so that a mirror could be named beside origin later without a new version of the file. Only `origin` can be set for now.
 

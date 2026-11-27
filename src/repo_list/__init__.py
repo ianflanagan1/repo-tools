@@ -14,7 +14,10 @@ with ✔ in its place:
   👻 commits on detached HEAD     📡 fetch failed (with --fetch)
   🐘 Packagist (with --packagist) 💥 git failed
   🔴 npm (with --npm)             🔧 no integration, or a wrong one
-  🧭 origin isn't on the git host .config/ianf-repo-tools.toml puts it on
+  🧭 origin isn't on the git host .config/ianf-repo-tools.toml puts it on, or seen by who it
+     says (with --fetch), or its git host couldn't say (with --fetch)
+  🔧 origin on GitHub or Bitbucket, but no git-host or visibility for it in
+     .config/ianf-repo-tools.toml
   🔖 commits since the latest version, and 🔗 a lock file behind on a package of yours (with a
      package flag)
 
@@ -24,7 +27,8 @@ whose .config/ianf-repo-tools.toml sets skip-fix = true; repo-fix leaves both al
 Before the path are four icons: the integration, 🏠 direct, 📏 pr-rebase,
 🔀 pr-merge or 🔧 unset; the git host, 🐙 GitHub, 🦊 GitLab, 🧺 Bitbucket, 🗻 Codeberg, 🔷 Azure
 DevOps, ❔ another, 🔌 no remote, or 💻 none, kept on this computer by git-host = "none" in
-[remotes.origin]; with --fetch, 🌐 public or 🔒 private; and each kind of dependency it is,
+[remotes.origin]; 🌐 public or 🔒 private, as its visibility says, or without one, what
+the git host says, with --fetch; and each kind of dependency it is,
 🐘 Composer, 🔴 npm, 🐍 Python, 🐹 Go module, 📋 Copier template or ⛄ Nix flake, blank for none;
 a Python project or Go module is one once another directory pins it. Every worktree shows its
 own.

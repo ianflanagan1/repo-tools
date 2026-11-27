@@ -4,10 +4,14 @@ Every worktree shows them, though they share the remote. And 🧭 when origin is
 worktree's .config/ianf-repo-tools.toml puts it, or isn't seen by who its visibility says, which
 only a person can tell the right one of, so repo-fix leaves it.
 
-The git host is told by the remote's URL. Who can see it is asked of the git host, so only when
-the remotes were fetched in this run: repo-list with --fetch, and repo-fix. A git host or server
-repo-tools has no adapter for, or one that can't say, leaves it blank. That there's no remote is
-also a problem, the publish plugin's.
+The git host is told by the remote's URL. Origin on a git host repo-tools has an adapter for
+must have both its git host and its visibility in the settings, which say who can see it on every
+run, and 🔧 when they don't; repo-fix asks for them. The git host is asked who can see it only when
+the remotes were fetched in this run, repo-list with --fetch and repo-fix, to check the settings,
+and a git host that can't say is then reported, so the check never lapses unseen. For any other
+remote, who can see it is what the git host says, when asked; a git host or server repo-tools has
+no adapter for, or one that can't say, leaves it blank. That there's no remote is also a
+problem, the publish plugin's.
 """
 
 from collections.abc import Callable
@@ -86,6 +90,38 @@ class SeenOtherwise:
         return f"🧭 {ORIGIN} is {self.actual}, though {SETTINGS} makes it {self.expected}"
 
 
+@final
+@dataclass(frozen=True)
+class OriginUnsaid:
+    """Origin is on a git host, but the settings don't say which, or who can see it there, as
+    every repository published must."""
+
+    git_host: GitHost
+    """The git host origin is on, by its URL."""
+    unset: tuple[str, ...]
+    """The settings of [remotes.origin] that are missing: git-host, visibility, or both."""
+    seen: Visibility | None
+    """Who the git host says can see origin, or None when it wasn't asked or couldn't say."""
+
+    def describe(self) -> str:
+        settings = " or ".join(f"remotes.{ORIGIN}.{setting}" for setting in self.unset)
+        return f"🔧 {SETTINGS} doesn't set {settings}"
+
+
+@final
+@dataclass(frozen=True)
+class VisibilityUnchecked:
+    """Origin's git host couldn't say who can see it, so the settings' visibility wasn't
+    checked."""
+
+    git_host: GitHost
+    reason: str
+
+    def describe(self) -> str:
+        on = git_hosts.title(self.git_host)
+        return f"🧭 {on} couldn't say who can see {ORIGIN}: {self.reason}"
+
+
 type Mismatch = NoOrigin | OriginElsewhere | RemoteOfLocalOnly
 
 
@@ -130,18 +166,45 @@ class Remote(Plugin):
         url = git(repo, "config", f"remote.{remote}.url", check=False)
         found.append(Badge(Slot.GIT_HOST, git_host_icon(url)))
         remote_repo = self.remote_repo_at(url) if directory.fetched else None
-        if remote_repo is None:
-            return found
-        match remote_repo.visibility():
-            case Unknown():
-                return found
-            case Visibility() as visibility:
-                expected = place.visibility if remote == ORIGIN else None
-                seen = (
-                    [SeenOtherwise(expected, visibility)]
-                    if expected is not None and expected is not visibility
-                    else []
-                )
-                return [*seen, *found, Badge(Slot.VISIBILITY, icon(visibility))]
-            case _ as answer:
-                assert_never(answer)
+        seen = remote_repo.visibility() if remote_repo else None
+        if remote != ORIGIN:
+            return [*found, *_shown(seen)]
+        return [*about_origin(place.origin, place.visibility, git_host_at(url), seen), *found]
+
+
+def about_origin(
+    origin: Origin | None,
+    expected: Visibility | None,
+    on: GitHost | None,
+    seen: Visibility | Unknown | None,
+) -> list[Problem]:
+    """What to show of who can see origin, given where the settings put it and who they say can
+    see it, the git host its URL is on, None for one there's no adapter for, and what that git
+    host said, None when it wasn't asked: the settings' visibility, and how the git host differs
+    from them, or that they're missing; without them, or when they put origin elsewhere, which
+    is reported already, what the git host said."""
+    if on is None or isinstance(origin, LocalOnly) or origin not in (None, on):
+        return _shown(seen)
+    named = (("git-host", origin), ("visibility", expected))
+    unset = tuple(setting for setting, value in named if value is None)
+    unsaid: list[Problem] = (
+        [OriginUnsaid(on, unset, seen if isinstance(seen, Visibility) else None)] if unset else []
+    )
+    if expected is None:
+        return [*unsaid, *_shown(seen)]
+    drift: list[Problem]
+    match seen:
+        case None:
+            drift = []
+        case Unknown():
+            drift = [VisibilityUnchecked(on, seen.reason)]
+        case Visibility():
+            drift = [] if seen is expected else [SeenOtherwise(expected, seen)]
+        case _:
+            assert_never(seen)
+    return [*unsaid, *drift, Badge(Slot.VISIBILITY, icon(expected))]
+
+
+def _shown(seen: Visibility | Unknown | None) -> list[Problem]:
+    """The badge of who the git host says can see the remote, when it said."""
+    return [Badge(Slot.VISIBILITY, icon(seen))] if isinstance(seen, Visibility) else []

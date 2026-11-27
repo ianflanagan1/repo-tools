@@ -12,6 +12,7 @@ import pytest
 from cli_kit.models import claude_code
 
 from repo_list import fix, remote_repos
+from repo_list.git_hosts import GitHost, Visibility
 from repo_list.plugins import lock, npm, packagist, publish
 from repo_list.plugins import release as release_plugin
 
@@ -1109,6 +1110,90 @@ def test_a_repository_with_a_remote_or_a_git_host_is_not_asked(projects, fakes, 
     projects.local_repo("b")
     repo_fix()
     assert terminal.prompts == []
+
+
+class SeenBy:
+    """A remote repo on GitHub that says who can see it."""
+
+    git_host = GitHost.GITHUB
+
+    def __init__(self, visibility: Visibility) -> None:
+        self.answer = visibility
+
+    def visibility(self) -> Visibility:
+        return self.answer
+
+
+def published_on_github(projects, monkeypatch, repo: Path, seen: Visibility) -> None:
+    """Points origin at a GitHub URL, which git config sends to its bare repository, and makes
+    GitHub say seen can see it."""
+    url = "git@github.com:me/a.git"
+    git(repo, "config", f"url.{projects.origin(repo)}.insteadOf", url)
+    git(repo, "remote", "set-url", "origin", url)
+    monkeypatch.setattr(remote_repos, "for_remote", lambda url: SeenBy(seen))
+
+
+def test_a_published_repository_is_asked_who_can_see_it_offering_its_git_hosts_answer_first(
+    projects, fakes, repo_fix, terminal, monkeypatch
+):
+    a = projects.pushed_repo("a")
+    published_on_github(projects, monkeypatch, a, Visibility.PRIVATE)
+    terminal.answer("private")
+    result = repo_fix()
+    assert terminal.prompts == ["a: Who should see origin on GitHub?"]
+    assert terminal.options == [
+        "private    🔒 only those given access (as GitHub has it now)",
+        "public     🌐 anyone",
+        "skip          leave it unset, and ask again next time",
+    ]
+    assert (a / SETTINGS).read_text() == (
+        'version = 1\nintegration = "direct"\n\n[remotes.origin]\ngit-host = "github"\n'
+        'visibility = "private"\n'
+    )
+    assert subjects(a) == ["init", "Fake commit"]
+    assert result.summary == "✔ All 1 clean"
+
+
+def test_a_published_repository_whose_visibility_is_skipped_is_left_unset(
+    projects, fakes, repo_fix, terminal, monkeypatch
+):
+    a = projects.pushed_repo("a")
+    published_on_github(projects, monkeypatch, a, Visibility.PUBLIC)
+    terminal.answer("skip")
+    result = repo_fix()
+    assert "remotes" not in (a / SETTINGS).read_text()
+    assert result.listing == [
+        "🏠 🐙 🌐 a  main  ✘ 🔧 .config/ianf-repo-tools.toml doesn't set"
+        " remotes.origin.git-host or remotes.origin.visibility"
+    ]
+
+
+def test_a_published_repository_naming_its_git_host_is_asked_only_who_can_see_it(
+    projects, fakes, repo_fix, terminal, monkeypatch
+):
+    a = projects.pushed_repo("a")
+    (a / SETTINGS).write_text(
+        'version = 1\nintegration = "direct"\n\n[remotes.origin]\ngit-host = "github"\n'
+    )
+    git(a, "commit", "--quiet", "--all", "--message", "Settings")
+    git(a, "push", "--quiet")
+    published_on_github(projects, monkeypatch, a, Visibility.PUBLIC)
+    terminal.answer("public")
+    result = repo_fix()
+    assert terminal.prompts == ["a: Who should see origin on GitHub?"]
+    assert (a / SETTINGS).read_text().endswith('git-host = "github"\nvisibility = "public"\n')
+    assert result.summary == "✔ All 1 clean"
+
+
+def test_of_a_published_repository_only_the_worktree_on_its_trunk_is_asked(
+    projects, fakes, repo_fix, terminal, monkeypatch
+):
+    a = projects.pushed_repo("a")
+    projects.worktree(a, "a-wt", "-b", "feature")
+    published_on_github(projects, monkeypatch, a, Visibility.PUBLIC)
+    terminal.answer("public")
+    repo_fix()
+    assert terminal.prompts == ["a: Who should see origin on GitHub?"]
 
 
 def test_with_pr_integration_other_branches_are_pushed_once_the_repository_is_published(

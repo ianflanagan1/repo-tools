@@ -20,9 +20,33 @@ def on_github(projects, repo: Path) -> None:
 
 def test_origin_on_the_git_host_the_settings_name_is_clean(projects, run):
     a = projects.pushed_repo("a")
+    put_origin_on(projects, a, '[remotes.origin]\ngit-host = "github"\nvisibility = "public"\n')
+    projects.git("-C", a, "remote", "set-url", "origin", "git@github.com:me/a.git")
+    assert run("--all").listing == ["🏠 🐙 🌐 a  main  ✔"]
+
+
+def test_origin_on_a_git_host_its_settings_say_nothing_of_is_reported(projects, run):
+    a = projects.pushed_repo("a")
+    projects.git("-C", a, "remote", "set-url", "origin", "git@github.com:me/a.git")
+    assert run().listing == [
+        "🏠 🐙    a  main  ✘ 🔧 .config/ianf-repo-tools.toml doesn't set"
+        " remotes.origin.git-host or remotes.origin.visibility"
+    ]
+
+
+def test_origin_whose_settings_name_its_git_host_but_not_who_can_see_it_is_reported(projects, run):
+    a = projects.pushed_repo("a")
     on_github(projects, a)
     projects.git("-C", a, "remote", "set-url", "origin", "git@github.com:me/a.git")
-    assert run("--all").listing == ["🏠 🐙    a  main  ✔"]
+    assert run().listing == [
+        "🏠 🐙    a  main  ✘ 🔧 .config/ianf-repo-tools.toml doesn't set remotes.origin.visibility"
+    ]
+
+
+def test_origin_on_a_git_host_repo_tools_has_no_adapter_for_needs_no_settings(projects, run):
+    a = projects.pushed_repo("a")
+    projects.git("-C", a, "remote", "set-url", "origin", "git@gitlab.com:me/a.git")
+    assert run("--all").listing == ["🏠 🦊    a  main  ✔"]
 
 
 def test_origin_on_another_git_host_is_reported(projects, run):

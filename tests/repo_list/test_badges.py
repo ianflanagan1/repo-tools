@@ -196,6 +196,42 @@ def test_origin_seen_by_others_than_its_settings_say_is_reported(projects, run, 
     settings_making_origin(projects, a, "private")
     remote_repo(Visibility.PUBLIC)
     assert run("--fetch").listing == [
-        "🏠 🐙 🌐 a  main  ✘ 🧭 origin is public, though .config/ianf-repo-tools.toml makes it"
+        "🏠 🐙 🔒 a  main  ✘ 🧭 origin is public, though .config/ianf-repo-tools.toml makes it"
         " private"
+    ]
+
+
+def test_origin_shows_who_its_settings_say_can_see_it_without_asking_its_git_host(
+    projects, run, remote_repo
+):
+    a = projects.pushed_repo("a")
+    settings_making_origin(projects, a, "private")
+    fake = remote_repo(Visibility.PUBLIC)
+    assert run("--all").listing == ["🏠 🐙 🔒 a  main  ✔"]
+    assert fake.asked == 0
+
+
+def test_a_git_host_that_cannot_say_who_sees_origin_its_settings_name_is_reported(
+    projects, run, remote_repo
+):
+    a = projects.pushed_repo("a")
+    settings_making_origin(projects, a, "private")
+    remote_repo(Unknown("No GitHub token is stored."))
+    assert run("--fetch").listing == [
+        "🏠 🐙 🔒 a  main  ✘ 🧭 GitHub couldn't say who can see origin: No GitHub token is stored."
+    ]
+
+
+def test_origin_its_settings_say_nothing_of_shows_who_its_git_host_says_can_see_it(
+    projects, run, remote_repo
+):
+    a = projects.pushed_repo("a")
+    projects.git(
+        "-C", a, "config", f"url.{projects.origin(a)}.insteadOf", "git@github.com:me/a.git"
+    )
+    projects.git("-C", a, "remote", "set-url", "origin", "git@github.com:me/a.git")
+    remote_repo(Visibility.PUBLIC)
+    assert run("--fetch").listing == [
+        "🏠 🐙 🌐 a  main  ✘ 🔧 .config/ianf-repo-tools.toml doesn't set"
+        " remotes.origin.git-host or remotes.origin.visibility"
     ]
